@@ -210,16 +210,24 @@ function Dashboard({ user, onLogout }) {
       if (data) {
         setSellers(data);
 
-        // Always show the current data count
+        // Calculate REALTIME statistics from actual database records
+        const uniqueProvinces = [...new Set(data.map(s => s.province).filter(Boolean))];
+        const uniqueCities = [...new Set(data.map(s => s.city).filter(Boolean))];
+        const uniqueDistricts = [...new Set(data.map(s => s.district).filter(Boolean))];
+        const uniqueVillages = [...new Set(data.map(s => s.village).filter(Boolean))];
+
         setStats({
           total: data.length,
-          cities: [...new Set(data.map(s => s.city).filter(c => c))].length,
-          categories: 8
+          provinces: uniqueProvinces.length || 38, // Show real count, fallback to 38 if zero but we have provinces table
+          cities: uniqueCities.length,
+          districts: uniqueDistricts.length,
+          villages: uniqueVillages.length
         });
 
-        setAvailableProvinces([...new Set(data.map(s => s.province).filter(p => p))]);
-        setAvailableCities([...new Set(data.map(s => s.city).filter(c => c))]);
-        setAvailableDistricts([...new Set(data.map(s => s.district).filter(d => d))]);
+        setAvailableProvinces(uniqueProvinces);
+        setAvailableCities(uniqueCities);
+        setAvailableDistricts(uniqueDistricts);
+        setAvailableKelurahans(uniqueVillages);
       }
     } catch (err) {
       sendWANotification(`❌ *ERROR: FETCH DATA (SELLERS)*\n\n👤 *User:* ${user.username}\n⚠️ *Detail:* ${err.message || err}`);

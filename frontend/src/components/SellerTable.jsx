@@ -59,29 +59,31 @@ function SellerTable({ sellers, loading }) {
                          <span className="px-2 py-0.5 bg-white/5 text-slate-500 text-[8px] font-black uppercase rounded-lg">🎵 TikTok</span>
                       </div>
                       <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
-                        TikTok & Instagram • <span className="text-indigo-400">{seller.followers_count?.toLocaleString() || 0} followers</span> • ER: {(Math.random() * 15 + 2).toFixed(1)}%
+                        {seller.platform} • <span className="text-indigo-400">{seller.followers_count?.toLocaleString() || 0} followers</span>
+                        {seller.engagement_rate && ` • ER: ${seller.engagement_rate}%`}
+                        {seller.video_count > 0 && ` • ${seller.video_count} videos`}
                       </div>
                     </div>
                   </td>
 
                   <td className="px-8 py-10 align-top">
                     <span className="text-sm font-bold tracking-widest font-mono text-slate-600">
-                      {seller.phone_number || '0812xxxxxx'}
+                      {seller.phone_number || 'N/A'}
                     </span>
                   </td>
 
                   <td className="px-8 py-10 align-top">
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-full">
                       <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
-                      <span className="text-[9px] font-black text-orange-500 uppercase tracking-widest">{seller.category || 'Kuliner'}</span>
+                      <span className="text-[9px] font-black text-orange-500 uppercase tracking-widest">{seller.category || 'General'}</span>
                     </div>
                   </td>
 
                   <td className="px-8 py-10 align-top">
                     <div className="flex flex-col gap-1">
-                      <span className="text-[11px] font-black text-white uppercase">{seller.city || 'Kota Jakarta Pusat'}</span>
-                      <span className="text-[10px] font-bold text-orange-400 uppercase">Kec. {seller.district || 'Cempaka Putih'}</span>
-                      <span className="text-[10px] font-bold text-emerald-500 uppercase">Kel. {seller.village || 'Cempaka Putih Barat'}</span>
+                      <span className="text-[11px] font-black text-white uppercase">{seller.city || seller.province || 'Indonesia'}</span>
+                      {seller.district && <span className="text-[10px] font-bold text-orange-400 uppercase">Kec. {seller.district}</span>}
+                      {seller.village && <span className="text-[10px] font-bold text-emerald-500 uppercase">Kel. {seller.village}</span>}
                     </div>
                   </td>
 
@@ -99,7 +101,7 @@ function SellerTable({ sellers, loading }) {
 
                   <td className="px-8 py-10 align-top max-w-[300px]">
                     <p className="text-[11px] font-medium text-slate-400 leading-relaxed italic line-clamp-3">
-                      {seller.potential_reason || 'Martabak premium dengan topping unik viral. 312rb followers. Martabak galaxy, matcha & overloaded.'}
+                      {seller.potential_reason || seller.bio}
                     </p>
                   </td>
                 </tr>
@@ -109,22 +111,20 @@ function SellerTable({ sellers, loading }) {
                     <td colSpan="7" className="px-8 py-10">
                       <div className="bg-[#12141d] border border-white/5 p-8 rounded-[2rem] flex flex-col gap-8 shadow-inner">
                         <div className="flex gap-4">
-                           <button className="flex items-center gap-3 px-6 py-3 bg-[#1b1f2b] border border-white/5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all">
+                           <a href={seller.tiktok_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-6 py-3 bg-[#1b1f2b] border border-white/5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all">
                               <Music2 className="w-4 h-4" /> TikTok <span className="text-slate-600">@{seller.username}</span> <ExternalLink className="w-3 h-3" />
-                           </button>
-                           <button className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-rose-500/10 to-orange-500/10 border border-rose-500/20 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all">
-                              <TrendingUp className="w-4 h-4" /> Instagram <span className="text-slate-600">@{seller.username}</span> <ExternalLink className="w-3 h-3" />
-                           </button>
+                           </a>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-10">
                           <StatItem label="FOLLOWERS" value={seller.followers_count?.toLocaleString()} />
-                          <StatItem label="ENGAGEMENT RATE" value="18.4%" color="text-emerald-500" />
+                          {seller.engagement_rate && <StatItem label="ENGAGEMENT RATE" value={`${seller.engagement_rate}%`} color="text-emerald-500" />}
                           <StatItem label="POTENSI SCORE" value={`${seller.potential_score}/100`} color="text-indigo-400" />
-                          <StatItem label="BERGABUNG" value="2021" />
+                          <StatItem label="KATEGORI" value={seller.category} />
                           <StatItem label="PROVINSI" value={seller.province || '-'} color="text-white" />
                           <StatItem label="KOTA/KAB" value={seller.city || '-'} />
-                          <StatItem label="KECAMATAN" value={seller.district || 'Cempaka Putih'} color="text-orange-400" />
-                          <StatItem label="KELURAHAN" value={seller.village || 'Cempaka Putih Barat'} color="text-emerald-500" />
+                          {seller.district && <StatItem label="KECAMATAN" value={seller.district} color="text-orange-400" />}
+                          {seller.village && <StatItem label="KELURAHAN" value={seller.village} color="text-emerald-500" />}
+                          <StatItem label="TGL SCRAPE" value={new Date(seller.last_scraped).toLocaleDateString()} />
                         </div>
                       </div>
                     </td>
