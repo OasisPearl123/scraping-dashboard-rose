@@ -298,138 +298,136 @@ function Dashboard({ user, onLogout }) {
         {activeTab === 'users' ? (
           <UserManagement />
         ) : (
-          <>
-            {!showResults ? (
-              <div className="animate-fade-in">
-                {/* HERO SECTION BASED ON IMAGE */}
-                <div className="text-center mb-16 space-y-6">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase text-indigo-400 tracking-widest animate-pulse">
-                    🚀 Hyper-Local Seller Discovery - Indonesia
-                  </div>
-                  <h1 className="text-5xl lg:text-6xl font-black italic tracking-tighter uppercase leading-[0.9]">
-                    Temukan Seller Potensial<br />
-                    <span className="text-indigo-500">Hingga Tingkat Kota</span>
-                  </h1>
-                  <p className="text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed">
-                    Filter seller TikTok UMKM berdasarkan wilayah dan kategori secara realtime untuk memetakan pasar di setiap daerah Indonesia.
-                  </p>
+          <div className="space-y-12">
+            <div className="animate-fade-in">
+              {/* HERO SECTION BASED ON IMAGE */}
+              <div className="text-center mb-16 space-y-6">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase text-indigo-400 tracking-widest animate-pulse">
+                  🚀 Hyper-Local Seller Discovery - Indonesia
+                </div>
+                <h1 className="text-5xl lg:text-6xl font-black italic tracking-tighter uppercase leading-[0.9]">
+                  Temukan Seller Potensial<br />
+                  <span className="text-indigo-500">Hingga Tingkat Kota</span>
+                </h1>
+                <p className="text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed">
+                  Filter seller TikTok UMKM berdasarkan wilayah dan kategori secara realtime untuk memetakan pasar di setiap daerah Indonesia.
+                </p>
 
-                  {/* STATS CARDS */}
-                  <div className="flex flex-wrap justify-center gap-6 mt-12">
-                    <StatCard value={stats.total} label="TOTAL SELLER" />
-                    <StatCard value={38} label="PROVINSI" />
-                    <StatCard value={stats.cities} label="KOTA/KAB" />
-                    <StatCard value={stats.categories} label="KATEGORI" />
-                  </div>
+                {/* STATS CARDS */}
+                <div className="flex flex-wrap justify-center gap-6 mt-12">
+                  <StatCard value={stats.total} label="TOTAL SELLER" />
+                  <StatCard value={38} label="PROVINSI" />
+                  <StatCard value={stats.cities} label="KOTA/KAB" />
+                  <StatCard value={stats.categories} label="KATEGORI" />
+                </div>
+              </div>
+
+              {/* FILTER BOX BASED ON IMAGE */}
+              <div className="bg-[#12141d] border border-white/5 rounded-[2.5rem] p-8 mb-12 shadow-2xl">
+                <div className="flex items-center gap-2 mb-8 text-slate-400">
+                  <Search className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Filter Pencarian Hyper-Local</span>
                 </div>
 
-                {/* FILTER BOX BASED ON IMAGE */}
-                <div className="bg-[#12141d] border border-white/5 rounded-[2.5rem] p-8 mb-12 shadow-2xl">
-                  <div className="flex items-center gap-2 mb-8 text-slate-400">
-                    <Search className="w-4 h-4" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Filter Pencarian Hyper-Local</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                    {/* Wilayah */}
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-2 text-indigo-400">
-                        <MapPin className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase">Filter Wilayah</span>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                  {/* Wilayah */}
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2 text-indigo-400">
+                      <MapPin className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase">Filter Wilayah</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase ml-2">Provinsi</label>
+                        <select
+                          className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-white font-bold"
+                          value={provinceFilter}
+                          onChange={e => {
+                              setProvinceFilter(e.target.value);
+                              setCityFilter('all');
+                          }}
+                        >
+                          <option value="all">Semua Provinsi</option>
+                          {availableProvinces.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase ml-2">Provinsi</label>
-                          <select
-                            className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-white font-bold"
-                            value={provinceFilter}
-                            onChange={e => {
-                                setProvinceFilter(e.target.value);
-                                setCityFilter('all');
-                            }}
-                          >
-                            <option value="all">Semua Provinsi</option>
-                            {availableProvinces.map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase ml-2">Kota/Kabupaten</label>
-                          <select
-                            className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-white font-bold"
-                            value={cityFilter}
-                            onChange={e => setCityFilter(e.target.value)}
-                          >
-                            <option value="all">Semua Kota</option>
-                            <option value="no_location" className="text-indigo-400">⚠️ Data Tanpa Wilayah</option>
-                            {availableCities.filter(c => {
-                                if (provinceFilter === 'all') return true;
-                                const seller = sellers.find(s => s.city === c);
-                                return seller?.province === provinceFilter;
-                            }).map(city => <option key={city} value={city}>{city}</option>)}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase ml-2">Kecamatan</label>
-                          <select
-                            className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-white font-bold"
-                            value={districtFilter}
-                            onChange={e => setDistrictFilter(e.target.value)}
-                            disabled={cityFilter === 'no_location'}
-                          >
-                            <option value="all">Semua Kecamatan</option>
-                            {availableDistricts.map(dist => <option key={dist} value={dist}>{dist}</option>)}
-                          </select>
-                        </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase ml-2">Kota/Kabupaten</label>
+                        <select
+                          className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-white font-bold"
+                          value={cityFilter}
+                          onChange={e => setCityFilter(e.target.value)}
+                        >
+                          <option value="all">Semua Kota</option>
+                          <option value="no_location" className="text-indigo-400">⚠️ Data Tanpa Wilayah</option>
+                          {availableCities.filter(c => {
+                              if (provinceFilter === 'all') return true;
+                              const seller = sellers.find(s => s.city === c);
+                              return seller?.province === provinceFilter;
+                          }).map(city => <option key={city} value={city}>{city}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase ml-2">Kecamatan</label>
+                        <select
+                          className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-white font-bold"
+                          value={districtFilter}
+                          onChange={e => setDistrictFilter(e.target.value)}
+                          disabled={cityFilter === 'no_location'}
+                        >
+                          <option value="all">Semua Kecamatan</option>
+                          {availableDistricts.map(dist => <option key={dist} value={dist}>{dist}</option>)}
+                        </select>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Kategori */}
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-2 text-indigo-400">
-                        <TrendingUp className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase">Kategori & Platform</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
+                  {/* Kategori */}
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2 text-indigo-400">
+                      <TrendingUp className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase">Kategori & Platform</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setCategoryFilter('all')}
+                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border ${categoryFilter === 'all' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#161922] border-white/5 text-slate-500 hover:text-white'}`}
+                      >
+                        Semua
+                      </button>
+                      {CATEGORIES.map(cat => (
                         <button
-                          onClick={() => setCategoryFilter('all')}
-                          className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border ${categoryFilter === 'all' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#161922] border-white/5 text-slate-500 hover:text-white'}`}
+                          key={cat}
+                          onClick={() => setCategoryFilter(cat)}
+                          className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border ${categoryFilter === cat ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#161922] border-white/5 text-slate-500 hover:text-white'}`}
                         >
-                          Semua
+                          {cat}
                         </button>
-                        {CATEGORIES.map(cat => (
-                          <button
-                            key={cat}
-                            onClick={() => setCategoryFilter(cat)}
-                            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border ${categoryFilter === cat ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#161922] border-white/5 text-slate-500 hover:text-white'}`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-between gap-4 pt-4">
-                        <div className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-[10px] font-black text-indigo-400 uppercase">TikTok Only</div>
-                        <button
-                          onClick={() => setShowResults(true)}
-                          className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-indigo-600/30 uppercase text-xs tracking-widest flex items-center justify-center gap-3 active:scale-[0.98]"
-                        >
-                          <Search className="w-4 h-4" /> Cari Seller Potensial
-                        </button>
-                      </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between gap-4 pt-4">
+                      <div className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-[10px] font-black text-indigo-400 uppercase">TikTok Only</div>
+                      <button
+                        onClick={() => {
+                          setShowResults(true);
+                          setTimeout(() => {
+                            document.getElementById('results-section')?.scrollIntoView({ behavior: 'smooth' });
+                          }, 100);
+                        }}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-indigo-600/30 uppercase text-xs tracking-widest flex items-center justify-center gap-3 active:scale-[0.98]"
+                      >
+                        <Search className="w-4 h-4" /> Cari Seller Potensial
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="animate-fade-in-up">
+            </div>
+
+            {showResults && (
+              <div id="results-section" className="animate-fade-in-up border-t border-white/5 pt-12">
                 <div className="flex flex-col lg:flex-row gap-6 items-center justify-between mb-12">
                   <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => setShowResults(false)}
-                      className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-all text-slate-400 group flex items-center gap-2 border border-white/5"
-                    >
-                      <MapPin className="w-4 h-4 rotate-180 group-hover:-translate-x-1 transition-transform" />
-                      <span className="text-[10px] font-black uppercase tracking-widest pr-2">Kembali</span>
-                    </button>
                     <div className="bg-indigo-600 p-3 rounded-2xl shadow-lg shadow-indigo-600/20"><TrendingUp className="w-6 h-6 text-white" /></div>
                     <div>
                       <h2 className="text-2xl font-black italic tracking-tighter uppercase leading-none">Hasil Analisis UMKM</h2>
@@ -463,6 +461,13 @@ function Dashboard({ user, onLogout }) {
                     ) : (
                       <button onClick={handleScrape} className="bg-indigo-600 hover:bg-indigo-500 px-8 py-4 rounded-2xl text-xs font-black transition-all shadow-lg shadow-indigo-500/20 uppercase tracking-widest">Scrape</button>
                     )}
+                    <button
+                      onClick={() => setShowResults(false)}
+                      className="p-4 bg-white/5 hover:bg-rose-500/10 rounded-2xl transition-all text-slate-400 hover:text-rose-500 border border-white/5"
+                      title="Sembunyikan Hasil"
+                    >
+                      <Square className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -513,7 +518,7 @@ function Dashboard({ user, onLogout }) {
                 )}
               </div>
             )}
-          </>
+          </div>
         )}
       </main>
     </div>
