@@ -3,7 +3,7 @@ import SellerTable from './SellerTable';
 import UserManagement from './UserManagement';
 import { supabase } from '../lib/supabase';
 import {
-  LogOut, TrendingUp, Users, RefreshCw, Search, Square, MapPin
+  LogOut, TrendingUp, Users, RefreshCw, Search, Square, MapPin, ChevronDown
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
