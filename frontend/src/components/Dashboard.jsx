@@ -287,10 +287,28 @@ function Dashboard({ user, onLogout }) {
 
       <nav className="border-b border-white/5 bg-[#0b0d15]/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-600/20"><Users className="w-6 h-6 text-white" /></div>
-            <span className="text-xl font-black tracking-tighter uppercase italic">AcquisitionAI</span>
-            <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[8px] font-black rounded-full border border-indigo-500/20 ml-2">v2.0 Hyper-Local</span>
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2">
+              <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-600/20"><Users className="w-6 h-6 text-white" /></div>
+              <span className="text-xl font-black tracking-tighter uppercase italic">AcquisitionAI</span>
+              <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[8px] font-black rounded-full border border-indigo-500/20 ml-2">v2.0 Hyper-Local</span>
+            </div>
+            {user?.role === 'admin' && (
+              <div className="hidden md:flex bg-white/5 p-1 rounded-2xl border border-white/5 ml-4">
+                <button
+                  onClick={() => { setActiveTab('data'); setShowResults(false); }}
+                  className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'users' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                >
+                  User Management
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <button className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all">
@@ -403,9 +421,9 @@ function Dashboard({ user, onLogout }) {
                       </div>
 
                       <div className="flex flex-wrap gap-3">
-                        {['TikTok', 'Instagram', 'Threads', 'Shopee', 'Viral', 'Organik'].map(p => (
-                          <button key={p} className="px-5 py-3 bg-[#161922] border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-500 hover:text-white transition-all flex items-center gap-2">
-                             <div className="w-1 h-1 rounded-full bg-slate-700"></div> {p}
+                        {['TikTok'].map(p => (
+                          <button key={p} className="px-5 py-3 bg-indigo-600 border border-indigo-500 rounded-xl text-[10px] font-black uppercase text-white transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20">
+                             <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div> {p}
                           </button>
                         ))}
                       </div>
