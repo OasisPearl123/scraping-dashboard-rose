@@ -28,7 +28,7 @@ function Dashboard({ user, onLogout }) {
   const [availableDistricts, setAvailableDistricts] = useState([]);
   const [kelurahanFilter, setKelurahanFilter] = useState('all');
   const [availableKelurahans, setAvailableKelurahans] = useState([]);
-  const [stats, setStats] = useState({ total: 0, provinces: 38, cities: 514, districts: 7240, villages: 83761 });
+  const [stats, setStats] = useState({ total: 0, provinces: 0, cities: 0, districts: 0, villages: 0 });
   const [trendingOnly, setTrendingOnly] = useState(false);
 
   const CATEGORIES = [
@@ -343,11 +343,11 @@ function Dashboard({ user, onLogout }) {
                 </p>
 
                 <div className="flex flex-wrap justify-center gap-4 mt-12">
-                  <StatCard value={stats.total || 950} label="TOTAL SELLER" />
-                  <StatCard value={38} label="PROVINSI" />
-                  <StatCard value={514} label="KOTA/KAB" />
-                  <StatCard value={7240} label="KECAMATAN" />
-                  <StatCard value={83761} label="KELURAHAN" />
+                  <StatCard value={stats.total} label="TOTAL SELLER" />
+                  <StatCard value={stats.provinces} label="PROVINSI" />
+                  <StatCard value={stats.cities} label="KOTA/KAB" />
+                  <StatCard value={stats.districts} label="KECAMATAN" />
+                  <StatCard value={stats.villages} label="KELURAHAN" />
                 </div>
               </div>
 
