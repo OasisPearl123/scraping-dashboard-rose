@@ -230,7 +230,7 @@ function Dashboard({ user, onLogout }) {
 
     setFilteredSellers(result);
     setCurrentPage(1);
-  }, [searchQuery, sortBy, sellers, categoryFilter, cityFilter, districtFilter]);
+  }, [searchQuery, sortBy, sellers, categoryFilter, cityFilter, provinceFilter, trendingOnly]);
 
   const fetchSellers = async () => {
     try {
@@ -316,7 +316,6 @@ function Dashboard({ user, onLogout }) {
       'Kategori': s.category,
       'Provinsi': s.province,
       'Kota': s.city,
-      'Kecamatan': s.district,
       'Potensi Skor': s.potential_score,
       'Analisis AI': s.potential_reason,
       'URL TikTok': s.tiktok_url
@@ -443,7 +442,7 @@ function Dashboard({ user, onLogout }) {
               <div className="bg-[#12141d]/80 backdrop-blur-xl border border-white/5 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-8">
                    <button onClick={() => {
-                     setProvinceFilter('all'); setCityFilter('all'); setDistrictFilter('all'); setCategoryFilter('all'); setSearchQuery('');
+                     setProvinceFilter('all'); setCityFilter('all'); setCategoryFilter('all'); setSearchQuery('');
                    }} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase text-slate-500 border border-white/5 transition-all transition-colors">× Reset Filter</button>
                 </div>
                 <div className="flex items-center gap-2 mb-10 text-slate-400">
