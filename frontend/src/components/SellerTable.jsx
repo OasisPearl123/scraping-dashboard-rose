@@ -73,17 +73,20 @@ function SellerTable({ sellers, loading }) {
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-2 group/wa"
+                        className="inline-flex items-center gap-3 px-4 py-2.5 bg-emerald-500/5 border border-emerald-500/20 rounded-xl hover:bg-emerald-500/10 hover:border-emerald-500/40 transition-all group/wa"
                       >
-                        <span className="text-sm font-bold tracking-widest font-mono text-emerald-500 group-hover/wa:text-emerald-400 underline decoration-emerald-500/30 transition-colors">
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+                        <span className="text-xs font-black tracking-widest font-mono text-emerald-400 group-hover/wa:text-emerald-300">
                           {seller.phone_number}
                         </span>
-                        <ExternalLink className="w-3 h-3 text-emerald-600 opacity-0 group-hover/wa:opacity-100 transition-all" />
+                        <ExternalLink className="w-3 h-3 text-emerald-600 group-hover/wa:translate-x-0.5 group-hover/wa:-translate-y-0.5 transition-transform" />
                       </a>
                     ) : (
-                      <span className="text-sm font-bold tracking-widest font-mono text-slate-600">
-                        N/A
-                      </span>
+                      <div className="inline-flex items-center px-4 py-2.5 bg-white/5 border border-white/5 rounded-xl">
+                        <span className="text-xs font-bold tracking-widest font-mono text-slate-600 italic">
+                          No Contact
+                        </span>
+                      </div>
                     )}
                   </td>
 
