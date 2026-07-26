@@ -244,6 +244,7 @@ class TiktokEngine:
                 'potential_reason': f"Terdeteksi di {city or prov or 'Indonesia'}. Memiliki basis {followers:,} pengikut.",
                 'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
             }
+            log(f"Profile Data: @{username} | Followers: {followers:,} | Phone: {phone or 'N/A'} | Loc: {city or prov or 'N/A'}", "INFO")
             self.db.query('sellers').upsert(data)
             log(f"Saved @{username} (Loc: {city or prov})", "SUCCESS")
             return True
@@ -266,11 +267,16 @@ class TiktokEngine:
 
 async def main_loop():
     db = SupabaseEngine()
+
+    # Environment Check Logs for GitHub Actions
+    is_github_action = os.environ.get('GITHUB_ACTIONS') == 'true'
+    if is_github_action:
+        log("Environment: GitHub Actions detected", "INFO")
+        log(f"Supabase URL: {db.url[:20]}...", "INFO")
+        log(f"WA API detected: {'Yes' if os.environ.get('WA_API_URL') else 'No'}", "INFO")
+
     if db.use_db: run_migrations(db)
     engine = TiktokEngine(db)
-
-    # Check if running in GitHub Actions for duration limit
-    is_github_action = os.environ.get('GITHUB_ACTIONS') == 'true'
     start_time = datetime.now()
     duration_limit = timedelta(hours=5, minutes=45) if is_github_action else None
 
@@ -298,10 +304,11 @@ async def main_loop():
                 # 3. Check Tasks
                 res = db.query('search_queries').select('*').eq('status', 'pending').execute()
                 if res.data:
+                    log(f"Found {len(res.data)} pending tasks in queue", "INFO")
                     for task in res.data:
                         tid, q = task['id'], task['query']
                         db.query('search_queries').update({'status': 'processing'}).eq('id', tid).execute()
-                        log(f"Processing Query: {q}")
+                        log(f"🚀 Processing Query: {q} (Task ID: {tid[:8]}...)", "INFO")
 
                         if q.startswith('@'):
                             await engine.extract_profile(context, q.replace('@',''))

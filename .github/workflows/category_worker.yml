@@ -26,6 +26,7 @@ jobs:
 
       - name: Run Scraper
         env:
+          PYTHONUNBUFFERED: "1"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -35,4 +36,7 @@ jobs:
           WA_INSTANCE_ID: ${{ secrets.WA_INSTANCE_ID }}
           WA_API_TOKEN: ${{ secrets.WA_API_TOKEN }}
           WA_GROUP_ID: ${{ secrets.WA_GROUP_ID }}
-        run: python scraper/engine.py
+        run: |
+          echo "🚀 Starting Worker Process..."
+          echo "Python version: $(python --version)"
+          python scraper/engine.py
