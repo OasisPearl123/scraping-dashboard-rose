@@ -18,6 +18,7 @@ function Dashboard({ user, onLogout }) {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [provinceFilter, setProvinceFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
+  const [platformFilter, setPlatformFilter] = useState('tiktok');
   const [sortBy, setSortBy] = useState('potential_score');
   const [availableProvinces, setAvailableProvinces] = useState([]);
   const [availableCities, setAvailableCities] = useState([]);
@@ -64,6 +65,12 @@ function Dashboard({ user, onLogout }) {
 
   useEffect(() => {
     let result = [...sellers];
+
+    // Platform Filter
+    if (platformFilter !== 'all') {
+      result = result.filter(s => (s.platform || 'tiktok').toLowerCase() === platformFilter.toLowerCase());
+    }
+
     if (categoryFilter !== 'all') result = result.filter(s => s.category === categoryFilter);
     if (cityFilter === 'no_location') {
       result = result.filter(s => !s.city && !s.province);
@@ -76,13 +83,16 @@ function Dashboard({ user, onLogout }) {
       result = result.filter(s => s.username?.toLowerCase().includes(q) || s.display_name?.toLowerCase().includes(q));
     }
     if (sortBy === 'followers_count_desc') result.sort((a, b) => (Number(b.followers_count) || 0) - (Number(a.followers_count) || 0));
-    else if (sortBy === 'followers_count_asc') result.sort((a, b) => (Number(a.followers_count) || 0) - (Number(b.followers_count) || 0));
-    else if (sortBy === 'potential_score_asc') result.sort((a, b) => (Number(a.potential_score) || 0) - (Number(b.potential_score) || 0));
     else result.sort((a, b) => (Number(b.potential_score) || 0) - (Number(a.potential_score) || 0));
     if (trendingOnly) result = result.filter(s => s.potential_score > 80);
+
+    if (result.length === 0 && platformFilter !== 'tiktok' && platformFilter !== 'all' && showResults) {
+      toast.error(`Data not found in App for ${platformFilter.toUpperCase()}`, { id: 'platform-not-found' });
+    }
+
     setFilteredSellers(result);
     setCurrentPage(1);
-  }, [searchQuery, sortBy, sellers, categoryFilter, cityFilter, provinceFilter, trendingOnly]);
+  }, [searchQuery, sortBy, sellers, categoryFilter, cityFilter, provinceFilter, trendingOnly, platformFilter, showResults]);
 
   const fetchSellers = async () => {
     try {
@@ -231,7 +241,16 @@ function Dashboard({ user, onLogout }) {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <button className="px-5 py-3 bg-indigo-600 border border-indigo-500 rounded-xl text-[10px] font-black uppercase text-white shadow-lg flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div> TikTok</button>
+                        {['TikTok', 'Instagram', 'Threads', 'Shopee'].map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setPlatformFilter(p.toLowerCase())}
+                            className={`px-5 py-3 border rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${platformFilter === p.toLowerCase() ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-[#161922] border-white/5 text-slate-500 hover:text-white'}`}
+                          >
+                             {platformFilter === p.toLowerCase() && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>}
+                             {p}
+                          </button>
+                        ))}
                       </div>
                       <div className="pt-4 space-y-4">
                         <span className="text-[10px] font-black uppercase text-slate-600 block italic tracking-widest">Atau pilih kategori:</span>
