@@ -6,8 +6,10 @@ import toast, { Toaster } from 'react-hot-toast';
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [pin, setPin] = useState(['', '', '', '']);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pendingProfile, setPendingProfile] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -38,12 +40,57 @@ function Login({ onLogin }) {
         return;
       }
 
-      // DIRECT LOGIN - NO APPROVAL NEEDED
-      toast.success(`Selamat Datang, ${profile.username}`);
-      onLogin(profile);
+      if (profile.role === 'admin') {
+        setPendingProfile(profile);
+        setLoading(false);
+        toast('Security Check: Masukkan 4 digit PIN Admin', { icon: '🛡️' });
+      } else {
+        toast.success(`Selamat Datang, ${profile.username}`);
+        onLogin(profile);
+      }
 
     } catch (err) {
       toast.error('Terjadi kesalahan pada sistem login');
+      setLoading(false);
+    }
+  };
+
+  const handlePinChange = (index, value) => {
+    if (isNaN(value)) return;
+    const newPin = [...pin];
+    newPin[index] = value.substring(value.length - 1);
+    setPin(newPin);
+
+    // Auto-focus next input
+    if (value && index < 3) {
+      document.getElementById(`pin-${index + 1}`).focus();
+    }
+  };
+
+  const handlePinVerify = async (e) => {
+    e.preventDefault();
+    const pinString = pin.join('');
+    if (pinString.length < 4) return;
+
+    setLoading(true);
+    try {
+      const { data: config } = await supabase
+        .from('system_config')
+        .select('value')
+        .eq('key', 'admin_pin')
+        .single();
+
+      if (config && config.value === pinString) {
+        toast.success('PIN Terverifikasi! Membuka Dashboard...');
+        onLogin(pendingProfile);
+      } else {
+        toast.error('PIN Keamanan Salah!');
+        setPin(['', '', '', '']);
+        document.getElementById('pin-0').focus();
+      }
+    } catch (err) {
+      toast.error('Gagal verifikasi PIN database');
+    } finally {
       setLoading(false);
     }
   };
@@ -63,55 +110,95 @@ function Login({ onLogin }) {
         </div>
 
         <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
-          <form onSubmit={handleSubmit} className="space-y-8 relative z-10">
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Username</label>
-                <div className="relative group">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-indigo-500 transition-colors" />
+          {!pendingProfile ? (
+            <form onSubmit={handleSubmit} className="space-y-8 relative z-10">
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Username</label>
+                  <div className="relative group">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-indigo-500 transition-colors" />
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full pl-12 pr-4 py-5 bg-white/[0.03] border-b-2 border-white/5 focus:border-indigo-500 transition-all outline-none text-xl font-bold text-white placeholder:text-slate-700"
+                      placeholder="Enter Username"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Security Password</label>
+                  <div className="relative group">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-indigo-500 transition-colors" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-12 pr-12 py-5 bg-white/[0.03] border-b-2 border-white/5 focus:border-indigo-500 transition-all outline-none text-xl font-bold text-white placeholder:text-slate-700"
+                      placeholder="••••••••"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-indigo-400 transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-2xl transition-all duration-300 shadow-xl shadow-indigo-600/20 active:scale-[0.98] disabled:opacity-70 flex items-center justify-center gap-3"
+              >
+                {loading ? "AUTHENTICATING..." : "LOGIN TO DASHBOARD"}
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handlePinVerify} className="space-y-8 relative z-10 animate-fade-in-up">
+              <div className="text-center space-y-2">
+                <h3 className="text-white font-black uppercase tracking-widest text-xs">Verify Admin PIN</h3>
+                <p className="text-slate-500 text-[10px]">Enter the 4-digit security code from DB</p>
+              </div>
+
+              <div className="flex justify-center gap-4">
+                {pin.map((digit, idx) => (
                   <input
+                    key={idx}
+                    id={`pin-${idx}`}
                     type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-12 pr-4 py-5 bg-white/[0.03] border-b-2 border-white/5 focus:border-indigo-500 transition-all outline-none text-xl font-bold text-white placeholder:text-slate-700"
-                    placeholder="Enter Username"
-                    required
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handlePinChange(idx, e.target.value)}
+                    className="w-14 h-16 bg-white/[0.05] border-2 border-white/10 rounded-xl text-center text-2xl font-black text-indigo-400 focus:border-indigo-500 outline-none transition-all"
+                    autoFocus={idx === 0}
                   />
-                </div>
+                ))}
               </div>
 
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Security Password</label>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-indigo-500 transition-colors" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-12 py-5 bg-white/[0.03] border-b-2 border-white/5 focus:border-indigo-500 transition-all outline-none text-xl font-bold text-white placeholder:text-slate-700"
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-indigo-400 transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-            </div>
+              <button
+                type="submit"
+                disabled={loading || pin.join('').length < 4}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-600/20 active:scale-[0.98] disabled:opacity-50"
+              >
+                {loading ? "VERIFYING PIN..." : "UNLOCK ACCESS"}
+              </button>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-2xl transition-all duration-300 shadow-xl shadow-indigo-600/20 active:scale-[0.98] disabled:opacity-70 flex items-center justify-center gap-3"
-            >
-              {loading ? "AUTHENTICATING..." : "LOGIN TO DASHBOARD"}
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </form>
+              <button
+                type="button"
+                onClick={() => setPendingProfile(null)}
+                className="w-full text-slate-600 hover:text-slate-400 text-[10px] font-black uppercase tracking-widest transition-colors"
+              >
+                ← Back to Login
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>
