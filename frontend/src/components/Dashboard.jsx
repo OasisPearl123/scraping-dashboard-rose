@@ -287,7 +287,7 @@ function Dashboard({ user, onLogout }) {
                   </div>
                 )}
 
-                <SellerTable sellers={filteredSellers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)} loading={loading} />
+                <SellerTable sellers={filteredSellers} loading={loading} />
               </div>
             )}
           </div>
