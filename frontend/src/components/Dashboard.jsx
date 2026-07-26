@@ -76,6 +76,8 @@ function Dashboard({ user, onLogout }) {
       result = result.filter(s => s.username?.toLowerCase().includes(q) || s.display_name?.toLowerCase().includes(q));
     }
     if (sortBy === 'followers_count_desc') result.sort((a, b) => (Number(b.followers_count) || 0) - (Number(a.followers_count) || 0));
+    else if (sortBy === 'followers_count_asc') result.sort((a, b) => (Number(a.followers_count) || 0) - (Number(b.followers_count) || 0));
+    else if (sortBy === 'potential_score_asc') result.sort((a, b) => (Number(a.potential_score) || 0) - (Number(b.potential_score) || 0));
     else result.sort((a, b) => (Number(b.potential_score) || 0) - (Number(a.potential_score) || 0));
     if (trendingOnly) result = result.filter(s => s.potential_score > 80);
     setFilteredSellers(result);
@@ -263,7 +265,9 @@ function Dashboard({ user, onLogout }) {
                     <button onClick={() => setTrendingOnly(!trendingOnly)} className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 transition-all ${trendingOnly ? 'bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-lg' : 'bg-[#161922] text-slate-500 border border-white/5'}`}>🔥 Trending Only</button>
                     <select className="bg-[#161922] border border-white/5 rounded-2xl px-8 py-4 text-[10px] font-black uppercase text-slate-400" value={sortBy} onChange={e => setSortBy(e.target.value)}>
                       <option value="potential_score">💎 Skor Tertinggi</option>
+                      <option value="potential_score_asc">📉 Skor Terendah</option>
                       <option value="followers_count_desc">📈 Follower Terbanyak</option>
+                      <option value="followers_count_asc">📉 Follower Terendah</option>
                     </select>
                     <button onClick={handleDownloadExcel} className="px-8 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-emerald-500/20">⬇️ Download Excel</button>
                     <button onClick={() => setShowResults(false)} className="p-4 bg-white/5 text-slate-400 rounded-2xl border border-white/5"><Square className="w-4 h-4" /></button>
