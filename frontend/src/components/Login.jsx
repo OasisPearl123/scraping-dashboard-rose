@@ -90,9 +90,8 @@ function Login({ onLogin }) {
       }
 
       if (profile.role === 'admin') {
-        setPendingProfile(profile);
-        setLoading(false);
-        toast('Security Check: Masukkan 4 digit PIN Admin', { icon: '🛡️' });
+        toast.success(`Selamat Datang Admin, ${profile.username}`);
+        onLogin(profile);
       } else {
         toast.success(`Selamat Datang, ${profile.username}`);
         await sendSecurityAlert('Login Success', 'SUCCESS (User Access)', profile.username);

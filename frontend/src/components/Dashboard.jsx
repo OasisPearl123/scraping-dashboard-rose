@@ -439,7 +439,7 @@ function Dashboard({ user, onLogout }) {
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase text-indigo-400 tracking-widest">
                   🎯 Hyper-Local Seller Discovery - Indonesia
                 </div>
-                <h1 className="text-6xl lg:text-7xl font-black italic tracking-tighter uppercase leading-[0.85] text-white">
+                <h1 className="text-6xl lg:text-7xl font-black uppercase leading-[0.85] text-white">
                   Temukan Seller Potensial<br />
                   <span className="text-indigo-500">Hingga Tingkat Kelurahan</span>
                 </h1>
