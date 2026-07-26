@@ -143,21 +143,46 @@ class TableProxy:
 def run_migrations(db_engine):
     log("Syncing Database Schema...")
     sql_dir = base_dir / 'supabase' / 'migrations'
-    if not sql_dir.exists(): return
 
-    try:
-        conn = psycopg2.connect(host=db_engine.db_host, database='postgres', user='postgres', password=db_engine.db_pass, port='5432')
-        conn.autocommit = True
-        cur = conn.cursor()
-        for sql_file in sorted(sql_dir.glob('*.sql')):
-            log(f"Migrating: {sql_file.name}")
-            with open(sql_file, 'r') as f:
-                content = f.read()
-                if content.strip(): cur.execute(content)
-        cur.close()
-        conn.close()
-        log("Database is up to date.", "SUCCESS")
-    except Exception as e: log(f"Migration warning: {e}", "WARNING")
+    # 1. Run .sql files
+    if sql_dir.exists():
+        try:
+            conn = psycopg2.connect(host=db_engine.db_host, database='postgres', user='postgres', password=db_engine.db_pass, port='5432')
+            conn.autocommit = True
+            cur = conn.cursor()
+            for sql_file in sorted(sql_dir.glob('*.sql')):
+                log(f"Migrating: {sql_file.name}")
+                with open(sql_file, 'r') as f:
+                    content = f.read()
+                    if content.strip(): cur.execute(content)
+
+            # 2. Cleanup Duplicates
+            log("Checking for duplicate records in all tables...")
+            cleanup_configs = [
+                {'table': 'sellers', 'unique_cols': ['username']},
+                {'table': 'provinces', 'unique_cols': ['name']},
+                {'table': 'cities', 'unique_cols': ['name', 'province_id']},
+                {'table': 'profiles', 'unique_cols': ['username']},
+                {'table': 'system_config', 'unique_cols': ['key']},
+                {'table': 'search_queries', 'unique_cols': ['query']}
+            ]
+
+            for config in cleanup_configs:
+                # Use subquery to delete duplicates keeping the newest one
+                delete_query = f"""
+                    DELETE FROM {config['table']} a
+                    USING {config['table']} b
+                    WHERE a.ctid < b.ctid
+                    AND {" AND ".join([f"a.{c} = b.{c}" for c in config['unique_cols']])}
+                """
+                cur.execute(delete_query)
+                if cur.rowcount > 0:
+                    log(f"Removed {cur.rowcount} duplicates from '{config['table']}'", "SUCCESS")
+
+            cur.close()
+            conn.close()
+            log("Database is up to date and cleaned.", "SUCCESS")
+        except Exception as e: log(f"Migration/Cleanup warning: {e}", "WARNING")
 
 # 3. CORE SCRAPER LOGIC
 class TiktokEngine:

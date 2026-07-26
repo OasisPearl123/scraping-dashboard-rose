@@ -20,7 +20,8 @@ def run():
         scraper_dir / 'check_db.py',
         scraper_dir / 'migrate.py',
         scraper_dir / 'local_run.bat',
-        root / 'supabase' / 'run_migrations.py'
+        root / 'supabase' / 'run_migrations.py',
+        scraper_dir / 'cleanup_duplicates.py'
     ]
     for f in redundant:
         if f.exists():
