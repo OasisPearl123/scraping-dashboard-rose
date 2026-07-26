@@ -325,22 +325,22 @@ function Dashboard({ user, onLogout }) {
               <span className="text-xl font-black tracking-tighter uppercase italic">AcquisitionAI</span>
               <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[8px] font-black rounded-full border border-indigo-500/20 ml-2">v2.0 Hyper-Local</span>
             </div>
-            {user?.role === 'admin' && (
-              <div className="hidden md:flex bg-white/5 p-1 rounded-2xl border border-white/5 ml-4">
-                <button
-                  onClick={() => { setActiveTab('data'); setShowResults(false); }}
-                  className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
-                >
-                  Dashboard
-                </button>
+            <div className="hidden md:flex bg-white/5 p-1 rounded-2xl border border-white/5 ml-4">
+              <button
+                onClick={() => { setActiveTab('data'); setShowResults(false); }}
+                className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+              >
+                Dashboard
+              </button>
+              {user?.role === 'admin' && (
                 <button
                   onClick={() => setActiveTab('users')}
                   className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'users' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
                 >
                   User Management
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <button className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all">
