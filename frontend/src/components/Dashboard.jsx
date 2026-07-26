@@ -99,6 +99,40 @@ function Dashboard({ user, onLogout }) {
     } catch (e) {}
   };
 
+  const getSystemInfo = async () => {
+    let location = "Unknown Location";
+    let ip = "N/A";
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      const data = await res.json();
+      location = `${data.city}, ${data.region}, ${data.country_name}`;
+      ip = data.ip;
+    } catch (e) {}
+
+    return {
+      device: navigator.userAgent.substring(0, 100),
+      location,
+      ip
+    };
+  };
+
+  const sendDetailedAlert = async (type, status) => {
+    const info = await getSystemInfo();
+    const message = `🔒 *SECURITY LOG: ACQUISITION-AI*\n\n👤 *User:* ${user.username}\n📝 *Event:* ${type}\n📊 *Status:* ${status}\n📍 *Loc:* ${info.location}\n🌐 *IP:* ${info.ip}\n📱 *Device:* ${info.device}`;
+
+    // Log to DB
+    await supabase.from('user_logs').insert({
+      username: user.username,
+      event_type: type,
+      status: status,
+      device_info: info.device,
+      location_info: info.location,
+      ip_address: info.ip
+    });
+
+    sendWANotification(message);
+  };
+
   useEffect(() => {
     fetchSellers();
     checkEngine();
@@ -273,11 +307,9 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
-  const handleLogout = (reason = 'Manual Logout') => {
+  const handleLogout = async (reason = 'Manual Logout') => {
     const actualReason = typeof reason === 'string' ? reason : 'Manual Logout';
-    const status = actualReason.includes('Expired') ? '🔒 AUTO LOGOUT (15 MIN)' : '🔒 MANUAL LOGOUT';
-    const msg = `${status}\n\n👤 *User:* ${user.username}\n⏰ *Time:* ${new Date().toLocaleString('id-ID')}\n📝 *Reason:* ${actualReason}`;
-    sendWANotification(msg);
+    await sendDetailedAlert('Logout', actualReason);
     onLogout();
   };
 
