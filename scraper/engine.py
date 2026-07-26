@@ -254,8 +254,10 @@ async def main_loop():
 
         while True:
             try:
-                # 1. Heartbeat
-                db.query('system_status').upsert({'id': 'main_engine', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
+                # 1. Heartbeat & Keep Alive (Prevent Sleep)
+                now = datetime.now().isoformat()
+                db.query('system_status').upsert({'id': 'main_engine', 'last_seen': now, 'status': 'online'}, on_conflict='id')
+                db.query('system_status').upsert({'id': 'keep_alive_local', 'last_seen': now, 'status': 'active'}, on_conflict='id')
 
                 # 2. Check WA
                 engine.check_wa()

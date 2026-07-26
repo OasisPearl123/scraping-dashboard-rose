@@ -1,0 +1,20 @@
+name: Supabase Keep Alive (Anti-Sleep)
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Berjalan setiap 6 jam
+  workflow_dispatch: # Memungkinkan dijalankan manual dari tab Actions
+
+jobs:
+  ping_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive Ping to Supabase
+        run: |
+          curl -X POST "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/system_status" \
+          -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+          -H "Content-Type: application/json" \
+          -H "Prefer: resolution=merge-duplicates" \
+          -d '{"id": "github_keep_alive", "last_seen": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "status": "online"}'
+          echo "Ping sent successfully!"
