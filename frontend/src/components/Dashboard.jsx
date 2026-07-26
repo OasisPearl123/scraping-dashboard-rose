@@ -21,15 +21,11 @@ function Dashboard({ user, onLogout }) {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [provinceFilter, setProvinceFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
-  const [districtFilter, setDistrictFilter] = useState('all');
   const [sortBy, setSortBy] = useState('followers_count_desc');
 
   const [availableProvinces, setAvailableProvinces] = useState([]);
   const [availableCities, setAvailableCities] = useState([]);
-  const [availableDistricts, setAvailableDistricts] = useState([]);
-  const [kelurahanFilter, setKelurahanFilter] = useState('all');
-  const [availableKelurahans, setAvailableKelurahans] = useState([]);
-  const [stats, setStats] = useState({ total: 0, provinces: 0, cities: 0, districts: 0, villages: 0 });
+  const [stats, setStats] = useState({ total: 0, provinces: 0, cities: 0 });
   const [trendingOnly, setTrendingOnly] = useState(false);
 
   const CATEGORIES = [
@@ -201,7 +197,7 @@ function Dashboard({ user, onLogout }) {
 
     // ADVANCED LOCATION FILTERING
     if (cityFilter === 'no_location') {
-      result = result.filter(s => !s.city && !s.district && !s.province);
+      result = result.filter(s => !s.city && !s.province);
     } else {
       if (provinceFilter !== 'all') {
         result = result.filter(s => s.province === provinceFilter);
@@ -209,10 +205,6 @@ function Dashboard({ user, onLogout }) {
       if (cityFilter !== 'all') {
         result = result.filter(s => s.city === cityFilter);
       }
-    }
-
-    if (districtFilter !== 'all') {
-      result = result.filter(s => s.district === districtFilter);
     }
 
     if (searchQuery.trim()) {
@@ -250,21 +242,15 @@ function Dashboard({ user, onLogout }) {
         // Calculate REALTIME statistics from actual database records
         const uniqueProvinces = [...new Set(data.map(s => s.province).filter(Boolean))];
         const uniqueCities = [...new Set(data.map(s => s.city).filter(Boolean))];
-        const uniqueDistricts = [...new Set(data.map(s => s.district).filter(Boolean))];
-        const uniqueVillages = [...new Set(data.map(s => s.village).filter(Boolean))];
 
         setStats({
           total: data.length,
-          provinces: uniqueProvinces.length || 38, // Show real count, fallback to 38 if zero but we have provinces table
-          cities: uniqueCities.length,
-          districts: uniqueDistricts.length,
-          villages: uniqueVillages.length
+          provinces: uniqueProvinces.length || 38,
+          cities: uniqueCities.length
         });
 
         setAvailableProvinces(uniqueProvinces);
         setAvailableCities(uniqueCities);
-        setAvailableDistricts(uniqueDistricts);
-        setAvailableKelurahans(uniqueVillages);
       }
     } catch (err) {
       sendWANotification(`❌ *ERROR: FETCH DATA (SELLERS)*\n\n👤 *User:* ${user.username}\n⚠️ *Detail:* ${err.message || err}`);
@@ -441,18 +427,16 @@ function Dashboard({ user, onLogout }) {
                 </div>
                 <h1 className="text-6xl lg:text-7xl font-black uppercase leading-[0.85] text-white">
                   Temukan Seller Potensial<br />
-                  <span className="text-indigo-500">Hingga Tingkat Kelurahan</span>
+                  <span className="text-indigo-500">Hingga Tingkat Kota</span>
                 </h1>
                 <p className="text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed text-sm">
-                  Filter seller sampai level Kecamatan & Kelurahan — untuk tim kanvaser & distributor yang memetakan wilayah blok per blok.
+                  Filter seller berdasarkan Provinsi dan Kota/Kabupaten untuk memetakan pasar di setiap daerah Indonesia.
                 </p>
 
                 <div className="flex flex-wrap justify-center gap-4 mt-12">
                   <StatCard value={stats.total} label="TOTAL SELLER" />
                   <StatCard value={stats.provinces} label="PROVINSI" />
                   <StatCard value={stats.cities} label="KOTA/KAB" />
-                  <StatCard value={stats.districts} label="KECAMATAN" />
-                  <StatCard value={stats.villages} label="KELURAHAN" />
                 </div>
               </div>
 
@@ -478,9 +462,7 @@ function Dashboard({ user, onLogout }) {
                     <div className="space-y-4">
                       {[
                         { label: 'PROVINSI', value: provinceFilter, setter: setProvinceFilter, options: availableProvinces, num: 1 },
-                        { label: 'KOTA / KABUPATEN', value: cityFilter, setter: setCityFilter, options: availableCities.filter(c => provinceFilter === 'all' || sellers.find(s => s.city === c)?.province === provinceFilter), num: 2 },
-                        { label: 'KECAMATAN', value: districtFilter, setter: setDistrictFilter, options: [], num: 3, disabled: true },
-                        { label: 'KELURAHAN', value: 'all', setter: () => {}, options: [], num: 4, disabled: true }
+                        { label: 'KOTA / KABUPATEN', value: cityFilter, setter: setCityFilter, options: availableCities.filter(c => provinceFilter === 'all' || sellers.find(s => s.city === c)?.province === provinceFilter), num: 2 }
                       ].map((field) => (
                         <div key={field.label} className={`grid grid-cols-[30px_1fr] items-center gap-4 ${field.disabled ? 'opacity-40' : ''}`}>
                           <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border ${field.disabled ? 'bg-slate-500/20 text-slate-500 border-slate-500/20' : 'bg-emerald-500/20 text-emerald-500 border-emerald-500/20'}`}>{field.num}</span>
@@ -591,7 +573,7 @@ function Dashboard({ user, onLogout }) {
                     <div className="relative flex-1 lg:min-w-[400px]">
                       <input
                         className="w-full bg-[#161922] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-white"
-                        placeholder="Cari seller, kecamatan, kelurahan..."
+                        placeholder="Cari seller, kota..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                       />

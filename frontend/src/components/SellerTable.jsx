@@ -82,8 +82,7 @@ function SellerTable({ sellers, loading }) {
                   <td className="px-8 py-10 align-top">
                     <div className="flex flex-col gap-1">
                       <span className="text-[11px] font-black text-white uppercase">{seller.city || seller.province || 'Indonesia'}</span>
-                      {seller.district && <span className="text-[10px] font-bold text-orange-400 uppercase">Kec. {seller.district}</span>}
-                      {seller.village && <span className="text-[10px] font-bold text-emerald-500 uppercase">Kel. {seller.village}</span>}
+                      {seller.city && seller.province && <span className="text-[10px] font-bold text-slate-500 uppercase">{seller.province}</span>}
                     </div>
                   </td>
 
@@ -115,15 +114,13 @@ function SellerTable({ sellers, loading }) {
                               <Music2 className="w-4 h-4" /> TikTok <span className="text-slate-600">@{seller.username}</span> <ExternalLink className="w-3 h-3" />
                            </a>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-10">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
                           <StatItem label="FOLLOWERS" value={seller.followers_count?.toLocaleString()} />
                           {seller.engagement_rate && <StatItem label="ENGAGEMENT RATE" value={`${seller.engagement_rate}%`} color="text-emerald-500" />}
                           <StatItem label="POTENSI SCORE" value={`${seller.potential_score}/100`} color="text-indigo-400" />
                           <StatItem label="KATEGORI" value={seller.category} />
                           <StatItem label="PROVINSI" value={seller.province || '-'} color="text-white" />
                           <StatItem label="KOTA/KAB" value={seller.city || '-'} />
-                          {seller.district && <StatItem label="KECAMATAN" value={seller.district} color="text-orange-400" />}
-                          {seller.village && <StatItem label="KELURAHAN" value={seller.village} color="text-emerald-500" />}
                           <StatItem label="TGL SCRAPE" value={new Date(seller.last_scraped).toLocaleDateString()} />
                         </div>
                       </div>

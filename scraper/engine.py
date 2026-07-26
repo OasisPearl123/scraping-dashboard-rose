@@ -203,15 +203,8 @@ class TiktokEngine:
             bio = bio or ""
             display_name = name or username or "TikTok User"
 
-            full = (name + " " + bio).lower()
-            city, prov, district, village = "", "", "", ""
-
-            # 1. Advanced Location Detection (Kec/Kel)
-            kec_match = re.search(r'kec\.?\s*([a-z\s]{3,20})(?:,|$|\n)', full)
-            if kec_match: district = kec_match.group(1).strip().title()
-
-            kel_match = re.search(r'kel\.?\s*([a-z\s]{3,20})(?:,|$|\n)', full)
-            if kel_match: village = kel_match.group(1).strip().title()
+            full = (display_name + " " + bio).lower()
+            city, prov = "", ""
 
             for c in self.regions['cities']:
                 if c['name'].lower() in full:
@@ -237,17 +230,16 @@ class TiktokEngine:
             phone = (re.search(r'(?:\+62|62|08)[0-9]{9,12}', bio.replace(" ","").replace("-","")) or [None])[0]
 
             data = {
-                'platform': 'tiktok', 'username': username, 'display_name': name or username,
+                'platform': 'tiktok', 'username': username, 'display_name': display_name,
                 'bio': bio, 'followers_count': followers, 'phone_number': phone or 'N/A',
                 'category': category, 'province': prov or "Indonesia", 'city': city or "",
-                'district': district, 'village': village,
                 'engagement_rate': er, 'video_count': video_count,
-                'potential_score': int(min((followers/5000)+(30 if phone else 0)+(20 if district else 0)+20, 100)),
-                'potential_reason': f"Terdeteksi di {district or city or prov or 'Indonesia'}. Memiliki basis {followers:,} pengikut.",
+                'potential_score': int(min((followers/5000)+(30 if phone else 0)+20, 100)),
+                'potential_reason': f"Terdeteksi di {city or prov or 'Indonesia'}. Memiliki basis {followers:,} pengikut.",
                 'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
             }
             self.db.query('sellers').upsert(data)
-            print(f"✅ Saved @{username} (Loc: {city or prov}, Kec: {district})")
+            print(f"✅ Saved @{username} (Loc: {city or prov})")
             return True
         except Exception as e: print(f"❌ Error @{username}: {str(e)[:50]}")
         finally: await page.close()
