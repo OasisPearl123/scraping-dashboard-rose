@@ -195,7 +195,13 @@ class TiktokEngine:
             await page.wait_for_selector('[data-e2e="user-title"]', timeout=15000)
 
             name = await page.inner_text('[data-e2e="user-title"]')
-            bio = await page.inner_text('[data-e2e="user-bio"]') if await page.query_selector('[data-e2e="user-bio"]') else ""
+            bio = ""
+            if await page.query_selector('[data-e2e="user-bio"]'):
+                bio = await page.inner_text('[data-e2e="user-bio"]')
+
+            # Ensure bio and name are never None (Postgres NOT NULL constraint)
+            bio = bio or ""
+            display_name = name or username or "TikTok User"
 
             full = (name + " " + bio).lower()
             city, prov, district, village = "", "", "", ""
