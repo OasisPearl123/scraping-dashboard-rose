@@ -261,7 +261,7 @@ function Dashboard({ user, onLogout }) {
 
   const handleScrape = async () => {
     if (!searchQuery.trim()) {
-      toast.error('Masukkan kata kunci pencarian dahulu!');
+      toast.error('Please enter a search keyword first!');
       return;
     }
     const clean = searchQuery.trim().replace('@', '');
@@ -269,11 +269,11 @@ function Dashboard({ user, onLogout }) {
       const { error } = await supabase.from('search_queries').upsert({ query: clean, status: 'pending' }, { onConflict: 'query' });
       if (error) throw error;
 
-      toast.success(`Task @${clean} dikirim ke Cloud`);
+      toast.success(`Task @${clean} sent to Cloud`);
       setIsProcessing(true);
       setActiveScraping(clean);
     } catch (err) {
-      toast.error('Gagal mengirim perintah scrape');
+      toast.error('Failed to send scrape command');
       sendWANotification(`❌ *ERROR: BUTTON SCRAPE*\n\n👤 *User:* ${user.username}\n🔍 *Query:* ${clean}\n⚠️ *Detail:* ${err.message || err}`);
     }
   };
@@ -288,7 +288,7 @@ function Dashboard({ user, onLogout }) {
 
       if (error) throw error;
 
-      toast('Engine diberhentikan', { icon: '🛑' });
+      toast('Engine stopped', { icon: '🛑' });
       setIsProcessing(false);
       setActiveScraping(null);
     } catch (err) {
@@ -310,22 +310,22 @@ function Dashboard({ user, onLogout }) {
 
     const dataToExport = filteredSellers.map(s => ({
       'Username': s.username,
-      'Nama Display': s.display_name,
+      'Display Name': s.display_name,
       'Followers': s.followers_count,
-      'No HP': s.phone_number,
-      'Kategori': s.category,
-      'Provinsi': s.province,
-      'Kota': s.city,
-      'Potensi Skor': s.potential_score,
-      'Analisis AI': s.potential_reason,
-      'URL TikTok': s.tiktok_url
+      'Phone No': s.phone_number,
+      'Category': s.category,
+      'Province': s.province,
+      'City': s.city,
+      'Potential Score': s.potential_score,
+      'AI Analysis': s.potential_reason,
+      'TikTok URL': s.tiktok_url
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Sellers");
     XLSX.writeFile(workbook, `TikTok_Sellers_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
-    toast.success('Excel berhasil didownload!');
+    toast.success('Excel downloaded successfully!');
   };
 
   const handleShare = async () => {
@@ -344,7 +344,7 @@ function Dashboard({ user, onLogout }) {
       setShowShareModal(false);
 
       if (waUrl && waId && waToken) {
-        const message = `🚀 *ACQUISITION-AI DASHBOARD*\n\nHalo! Cek database seller TikTok UMKM potensial di sini:\n🔗 ${window.location.href}\n\n_Sent via AcquisitionAI System_`;
+        const message = `🚀 *ACQUISITION DASHBOARD*\n\nHello! Check the potential TikTok SME seller database here:\n🔗 ${window.location.href}\n\n_Sent via Acquisition Dashboard System_`;
 
         const res = await fetch(`${waUrl}/waInstance${waId}/sendMessage/${waToken}`, {
           method: 'POST',
@@ -359,12 +359,12 @@ function Dashboard({ user, onLogout }) {
           throw new Error('API Send Failed');
         }
       } else {
-        window.open(`https://wa.me/${cleanNumber}?text=Cek dashboard AcquisitionAI: ${window.location.href}`, '_blank');
+        window.open(`https://wa.me/${cleanNumber}?text=Check Acquisition Dashboard: ${window.location.href}`, '_blank');
         toast.dismiss('wa-share');
       }
     } catch (err) {
-      toast.error('Gagal mengirim via API. Membuka WhatsApp Web...', { id: 'wa-share' });
-      window.open(`https://wa.me/${shareNumber.replace(/\D/g, '')}?text=Cek dashboard: ${window.location.href}`, '_blank');
+      toast.error('Failed to send via API. Opening WhatsApp Web...', { id: 'wa-share' });
+      window.open(`https://wa.me/${shareNumber.replace(/\D/g, '')}?text=Check dashboard: ${window.location.href}`, '_blank');
     }
   };
 
@@ -377,7 +377,7 @@ function Dashboard({ user, onLogout }) {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-2">
               <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-600/20"><Users className="w-6 h-6 text-white" /></div>
-              <span className="text-xl font-black tracking-tighter uppercase italic">AcquisitionAI</span>
+              <span className="text-xl font-black tracking-tighter uppercase">Acquisition Dashboard</span>
               <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[8px] font-black rounded-full border border-indigo-500/20 ml-2">v2.0 Hyper-Local</span>
             </div>
             <div className="hidden md:flex bg-white/5 p-1 rounded-2xl border border-white/5 ml-4">
@@ -402,7 +402,7 @@ function Dashboard({ user, onLogout }) {
               onClick={() => setShowShareModal(true)}
               className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all"
             >
-              <RefreshCw className="w-3 h-3" /> Bagikan <ChevronDown className="w-3 h-3" />
+              <RefreshCw className="w-3 h-3" /> Share <ChevronDown className="w-3 h-3" />
             </button>
             <div className="w-10 h-10 bg-slate-900 border border-white/5 rounded-xl flex items-center justify-center text-slate-500 font-black text-xs cursor-pointer hover:bg-slate-800 transition-all">?</div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-white/5 rounded-xl">
@@ -420,34 +420,34 @@ function Dashboard({ user, onLogout }) {
         ) : (
           <div className="space-y-12">
             <div className="animate-fade-in">
-              <div className="text-center mb-16 space-y-6">
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase text-indigo-400 tracking-widest">
-                  🎯 Hyper-Local Seller Discovery - Indonesia
-                </div>
-                <h1 className="text-6xl lg:text-7xl font-black uppercase leading-[0.85] text-white">
-                  Temukan Seller Potensial<br />
-                  <span className="text-indigo-500">Hingga Tingkat Kota</span>
-                </h1>
-                <p className="text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed text-sm">
-                  Filter seller berdasarkan Provinsi dan Kota/Kabupaten untuk memetakan pasar di setiap daerah Indonesia.
-                </p>
+                <div className="text-center mb-16 space-y-6">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase text-indigo-400 tracking-widest">
+                    🎯 Hyper-Local Seller Discovery - Indonesia
+                  </div>
+                  <h1 className="text-6xl lg:text-7xl font-black uppercase leading-[0.85] text-white">
+                    Find Potential Sellers<br />
+                    <span className="text-indigo-500">Down to City Level</span>
+                  </h1>
+                  <p className="text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed text-sm">
+                    Filter sellers by Province and City to map the market in every region of Indonesia.
+                  </p>
 
-                <div className="flex flex-wrap justify-center gap-4 mt-12">
-                  <StatCard value={stats.total} label="TOTAL SELLER" />
-                  <StatCard value={stats.provinces} label="PROVINSI" />
-                  <StatCard value={stats.cities} label="KOTA/KAB" />
+                  <div className="flex flex-wrap justify-center gap-4 mt-12">
+                    <StatCard value={stats.total} label="TOTAL SELLERS" />
+                    <StatCard value={stats.provinces} label="PROVINCES" />
+                    <StatCard value={stats.cities} label="CITIES/REG" />
+                  </div>
                 </div>
-              </div>
 
               <div className="bg-[#12141d]/80 backdrop-blur-xl border border-white/5 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-8">
+                        <div className="absolute top-0 right-0 p-8">
                    <button onClick={() => {
                      setProvinceFilter('all'); setCityFilter('all'); setCategoryFilter('all'); setSearchQuery('');
                    }} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase text-slate-500 border border-white/5 transition-all transition-colors">× Reset Filter</button>
                 </div>
                 <div className="flex items-center gap-2 mb-10 text-slate-400">
                   <Search className="w-4 h-4" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">FILTER PENCARIAN HYPER-LOCAL</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest">HYPER-LOCAL SEARCH FILTER</span>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
@@ -455,13 +455,13 @@ function Dashboard({ user, onLogout }) {
                   <div className="space-y-8">
                     <div className="flex items-center gap-2 text-indigo-400">
                       <MapPin className="w-4 h-4" />
-                      <span className="text-xs font-black uppercase tracking-widest italic">Filter Wilayah</span>
+                      <span className="text-xs font-black uppercase tracking-widest italic">Region Filter</span>
                     </div>
 
                     <div className="space-y-4">
                       {[
-                        { label: 'PROVINSI', value: provinceFilter, setter: setProvinceFilter, options: availableProvinces, num: 1 },
-                        { label: 'KOTA / KABUPATEN', value: cityFilter, setter: setCityFilter, options: availableCities.filter(c => provinceFilter === 'all' || sellers.find(s => s.city === c)?.province === provinceFilter), num: 2 }
+                        { label: 'PROVINCE', value: provinceFilter, setter: setProvinceFilter, options: availableProvinces, num: 1 },
+                        { label: 'CITY / REGENCY', value: cityFilter, setter: setCityFilter, options: availableCities.filter(c => provinceFilter === 'all' || sellers.find(s => s.city === c)?.province === provinceFilter), num: 2 }
                       ].map((field) => (
                         <div key={field.label} className={`grid grid-cols-[30px_1fr] items-center gap-4 ${field.disabled ? 'opacity-40' : ''}`}>
                           <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border ${field.disabled ? 'bg-slate-500/20 text-slate-500 border-slate-500/20' : 'bg-emerald-500/20 text-emerald-500 border-emerald-500/20'}`}>{field.num}</span>
@@ -476,7 +476,7 @@ function Dashboard({ user, onLogout }) {
                               }}
                               disabled={field.disabled}
                             >
-                              <option value="all">-- Semua {field.label.toLowerCase()} --</option>
+                              <option value="all">-- All {field.label.toLowerCase()} --</option>
                               {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                             </select>
                           </div>
@@ -489,16 +489,16 @@ function Dashboard({ user, onLogout }) {
                   <div className="space-y-8">
                     <div className="flex items-center gap-2 text-indigo-400">
                       <TrendingUp className="w-4 h-4" />
-                      <span className="text-xs font-black uppercase tracking-widest italic">Filter Kategori & Platform</span>
+                      <span className="text-xs font-black uppercase tracking-widest italic">Category & Platform Filter</span>
                     </div>
 
                     <div className="space-y-6">
                       <div className="space-y-2">
-                        <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-widest">Ketik bebas: "makanan", "tiktok", "fashion"</label>
+                        <label className="text-[8px] font-black text-slate-500 uppercase ml-2 tracking-widest">Free type: "food", "tiktok", "fashion"</label>
                         <div className="relative group">
                           <input
                             className="w-full bg-[#161922] border border-white/5 rounded-2xl pl-12 pr-4 py-5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-white italic"
-                            placeholder="Ketik bebas: 'makanan', 'tiktok', 'fashion'..."
+                            placeholder="Type keyword: 'food', 'tiktok', 'fashion'..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                           />
@@ -515,13 +515,13 @@ function Dashboard({ user, onLogout }) {
                       </div>
 
                       <div className="pt-4 space-y-4">
-                        <span className="text-[10px] font-black uppercase text-slate-600 block tracking-widest italic">Atau pilih kategori:</span>
+                        <span className="text-[10px] font-black uppercase text-slate-600 block tracking-widest italic">Or select category:</span>
                         <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => setCategoryFilter('all')}
                             className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border ${categoryFilter === 'all' ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-[#161922] border-white/5 text-slate-500 hover:text-white'}`}
                           >
-                            🌐 Semua
+                            🌐 All
                           </button>
                           {CATEGORIES.map(cat => (
                             <button
@@ -545,7 +545,7 @@ function Dashboard({ user, onLogout }) {
                           }}
                           className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-6 rounded-3xl transition-all shadow-2xl shadow-indigo-600/40 uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-3 active:scale-[0.98]"
                         >
-                          Cari Seller Potensial
+                          Find Potential Sellers
                         </button>
                       </div>
                     </div>
@@ -554,17 +554,16 @@ function Dashboard({ user, onLogout }) {
               </div>
             </div>
 
-            {showResults && (
               <div id="results-section" className="animate-fade-in-up border-t border-white/5 pt-16">
                 <div className="flex flex-col lg:flex-row gap-6 items-center justify-between mb-12">
                   <div className="flex items-center gap-6">
                     <div className="flex items-center gap-3">
                       <div className="bg-emerald-500 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20"><TrendingUp className="w-5 h-5 text-white" /></div>
-                      <h2 className="text-3xl font-black italic tracking-tighter uppercase text-white">Hasil Pencarian</h2>
+                      <h2 className="text-3xl font-black uppercase text-white">Search Results</h2>
                     </div>
                     <div className="flex gap-2">
-                      <span className="px-3 py-1.5 bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase rounded-lg border border-indigo-500/20">{filteredSellers.length} seller</span>
-                      <span className="px-3 py-1.5 bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase rounded-lg border border-indigo-500/20">Tingkat Kota</span>
+                      <span className="px-3 py-1.5 bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase rounded-lg border border-indigo-500/20">{filteredSellers.length} sellers</span>
+                      <span className="px-3 py-1.5 bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase rounded-lg border border-indigo-500/20">City Level</span>
                     </div>
                   </div>
 
@@ -572,7 +571,7 @@ function Dashboard({ user, onLogout }) {
                     <div className="relative flex-1 lg:min-w-[400px]">
                       <input
                         className="w-full bg-[#161922] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-white"
-                        placeholder="Cari seller, kota..."
+                        placeholder="Search seller, city..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                       />
@@ -591,8 +590,8 @@ function Dashboard({ user, onLogout }) {
                       value={sortBy}
                       onChange={e => setSortBy(e.target.value)}
                     >
-                      <option value="potential_score">💎 Skor Tertinggi</option>
-                      <option value="followers_count_desc">📈 Follower Terbanyak</option>
+                      <option value="potential_score">💎 Top Score</option>
+                      <option value="followers_count_desc">📈 Most Followers</option>
                     </select>
 
                     <button
@@ -620,7 +619,7 @@ function Dashboard({ user, onLogout }) {
                       </div>
                       <div>
                         <span className="font-black uppercase italic tracking-tight text-white text-lg block leading-none">Engine is scanning: @{activeScraping}</span>
-                        <span className="text-[10px] text-indigo-300/60 font-bold uppercase tracking-[0.3em] mt-2 block">AI Agent sedang mengekstrak profil UMKM...</span>
+                        <span className="text-[10px] text-indigo-300/60 font-bold uppercase tracking-[0.3em] mt-2 block">AI Agent extracting SME profile...</span>
                       </div>
                     </div>
                     <div className="px-6 py-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-[10px] font-black uppercase text-indigo-400 animate-pulse tracking-widest">Worker Online</div>
@@ -640,19 +639,19 @@ function Dashboard({ user, onLogout }) {
                       disabled={currentPage === 1}
                       className="px-8 py-4 bg-white/5 border border-white/5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 transition-all active:scale-95"
                     >
-                      Sebelumnya
+                      Previous
                     </button>
                     <div className="flex items-center gap-3 px-6 py-3 bg-slate-900/50 rounded-2xl border border-white/5">
-                      <span className="text-[10px] font-black uppercase text-slate-500">Hal</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Page</span>
                       <span className="text-xl font-black text-indigo-400 italic">{currentPage}</span>
-                      <span className="text-[10px] font-black uppercase text-slate-500">dari {Math.ceil(filteredSellers.length / itemsPerPage)}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">of {Math.ceil(filteredSellers.length / itemsPerPage)}</span>
                     </div>
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredSellers.length / itemsPerPage)))}
                       disabled={currentPage === Math.ceil(filteredSellers.length / itemsPerPage)}
                       className="px-8 py-4 bg-white/5 border border-white/5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 transition-all active:scale-95"
                     >
-                      Selanjutnya
+                      Next
                     </button>
                   </div>
                 )}
@@ -672,17 +671,17 @@ function Dashboard({ user, onLogout }) {
                  <RefreshCw className="w-8 h-8 text-emerald-500" />
                </div>
                <div className="space-y-1">
-                 <h3 className="text-xl font-black italic uppercase tracking-tight">Bagikan Dashboard</h3>
-                 <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Masukkan nomor WhatsApp untuk mengirim link akses secara otomatis</p>
+                 <h3 className="text-xl font-black uppercase tracking-tight text-white">Share Dashboard</h3>
+                 <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Enter WhatsApp number to send the access link automatically</p>
                </div>
             </div>
 
             <div className="space-y-6">
               <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Nomor WhatsApp</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">WhatsApp Number</label>
                 <input
                   type="text"
-                  placeholder="Contoh: 628123456789"
+                  placeholder="Example: 628123456789"
                   value={shareNumber}
                   onChange={(e) => setShareNumber(e.target.value)}
                   className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-5 text-xl font-black text-emerald-400 placeholder:text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
@@ -694,19 +693,19 @@ function Dashboard({ user, onLogout }) {
                  <button
                    onClick={() => {
                      navigator.clipboard.writeText(window.location.href);
-                     toast.success('Link disalin!');
+                     toast.success('Link copied!');
                      setShowShareModal(false);
                    }}
                    className="py-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-[10px] font-black uppercase text-slate-400 transition-all"
                  >
-                   Salin Link
+                   Copy Link
                  </button>
                  <button
                    onClick={handleShare}
                    disabled={shareNumber.length < 10}
                    className="py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-2xl text-[10px] font-black uppercase text-white shadow-xl shadow-emerald-600/20 transition-all"
                  >
-                   Kirim Sekarang
+                   Send Now
                  </button>
               </div>
 
@@ -714,7 +713,7 @@ function Dashboard({ user, onLogout }) {
                 onClick={() => setShowShareModal(false)}
                 className="w-full text-[10px] font-black uppercase text-slate-700 hover:text-slate-500 transition-colors pt-2"
               >
-                Batal
+                Cancel
               </button>
             </div>
           </div>

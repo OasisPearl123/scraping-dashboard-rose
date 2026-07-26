@@ -69,37 +69,37 @@ function Login({ onLogin }) {
         .maybeSingle();
 
       if (!profile) {
-        toast.error('Username tidak ditemukan!');
+        toast.error('Username not found!');
         await sendSecurityAlert('Login Attempt', 'FAILED (User Not Found)', username);
         setLoading(false);
         return;
       }
 
       if (profile.password !== password) {
-        toast.error('Password Salah!');
+        toast.error('Incorrect Password!');
         await sendSecurityAlert('Login Attempt', 'FAILED (Wrong Password)', username);
         setLoading(false);
         return;
       }
 
       if (profile.is_blocked) {
-        toast.error('AKSES DITOLAK: Akun Anda sedang diblokir.');
+        toast.error('ACCESS DENIED: Your account is currently blocked.');
         await sendSecurityAlert('Login Attempt', 'DENIED (Blocked)', username);
         setLoading(false);
         return;
       }
 
       if (profile.role === 'admin') {
-        toast.success(`Selamat Datang Admin, ${profile.username}`);
+        toast.success(`Welcome Admin, ${profile.username}`);
         onLogin(profile);
       } else {
-        toast.success(`Selamat Datang, ${profile.username}`);
+        toast.success(`Welcome, ${profile.username}`);
         await sendSecurityAlert('Login Success', 'SUCCESS (User Access)', profile.username);
         onLogin(profile);
       }
 
     } catch (err) {
-      toast.error('Terjadi kesalahan pada sistem login');
+      toast.error('An error occurred in the login system');
       setLoading(false);
     }
   };
@@ -155,7 +155,7 @@ function Login({ onLogin }) {
             <ShieldCheck className="w-10 h-10 text-indigo-500" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase">AcquisitionAI</h1>
+            <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase">Acquisition Dashboard</h1>
             <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.3em]">Direct Access Portal</p>
           </div>
         </div>

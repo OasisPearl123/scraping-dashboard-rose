@@ -15,7 +15,7 @@ function SellerTable({ sellers, loading }) {
           <div className="w-16 h-16 border-4 border-white/5 rounded-full"></div>
           <div className="absolute top-0 w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
-        <p className="text-slate-400 font-bold uppercase tracking-widest animate-pulse">Menghubungkan ke Sistem AI...</p>
+        <p className="text-slate-400 font-bold uppercase tracking-widest animate-pulse">Connecting to AI System...</p>
       </div>
     );
   }
@@ -27,12 +27,12 @@ function SellerTable({ sellers, loading }) {
           <thead>
             <tr className="bg-[#1b1f2b] border-b border-white/5">
               <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">#</th>
-              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Nama Seller</th>
-              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Nomor HP</th>
-              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Kategori</th>
-              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Wilayah</th>
-              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 text-center">Potensi Score</th>
-              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Alasan Potensial</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Seller Name</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Phone Number</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Category</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Region</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 text-center">Potential Score</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Potential Reason</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -132,11 +132,11 @@ function SellerTable({ sellers, loading }) {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
                           <StatItem label="FOLLOWERS" value={seller.followers_count?.toLocaleString()} />
                           {seller.engagement_rate && <StatItem label="ENGAGEMENT RATE" value={`${seller.engagement_rate}%`} color="text-emerald-500" />}
-                          <StatItem label="POTENSI SCORE" value={`${seller.potential_score}/100`} color="text-indigo-400" />
-                          <StatItem label="KATEGORI" value={seller.category} />
-                          <StatItem label="PROVINSI" value={seller.province || '-'} color="text-white" />
-                          <StatItem label="KOTA/KAB" value={seller.city || '-'} />
-                          <StatItem label="TGL SCRAPE" value={new Date(seller.last_scraped).toLocaleDateString()} />
+                          <StatItem label="POTENTIAL SCORE" value={`${seller.potential_score}/100`} color="text-indigo-400" />
+                          <StatItem label="CATEGORY" value={seller.category} />
+                          <StatItem label="PROVINCE" value={seller.province || '-'} color="text-white" />
+                          <StatItem label="CITY/REG" value={seller.city || '-'} />
+                          <StatItem label="SCRAPE DATE" value={new Date(seller.last_scraped).toLocaleDateString()} />
                         </div>
                       </div>
                     </td>
