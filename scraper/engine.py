@@ -265,13 +265,23 @@ async def main_loop():
     if db.use_db: run_migrations(db)
     engine = TiktokEngine(db)
 
+    # Check if running in GitHub Actions for duration limit
+    is_github_action = os.environ.get('GITHUB_ACTIONS') == 'true'
+    start_time = datetime.now()
+    duration_limit = timedelta(hours=5, minutes=45) if is_github_action else None
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
-        print("🚀 ENGINE START: Monitoring Dashboard & WA...")
+        print(f"🚀 ENGINE START: Monitoring Dashboard & WA... (Worker: {is_github_action})")
 
         while True:
+            # Check duration if in GitHub Action
+            if duration_limit and (datetime.now() - start_time > duration_limit):
+                print("⏰ Duration reached in GitHub Action. Stopping.")
+                break
+
             try:
                 # 1. Heartbeat & Keep Alive (Prevent Sleep)
                 now = datetime.now().isoformat()
@@ -298,9 +308,11 @@ async def main_loop():
                             links = await search_page.query_selector_all('a[href*="/@"]')
                             users = []
                             for l in links:
-                                href = await l.get_attribute('href')
-                                m = re.search(r'@([\w.]+)', href)
-                                if m: users.append(m.group(1))
+                                try:
+                                    href = await l.get_attribute('href')
+                                    m = re.search(r'@([\w.]+)', href)
+                                    if m: users.append(m.group(1))
+                                except: pass
 
                             users = list(set(users))[:15]
                             await search_page.close()
@@ -308,25 +320,50 @@ async def main_loop():
 
                         db.query('search_queries').update({'status': 'completed'}).eq('id', tid).execute()
 
-                # 4. Random Discovery (Worker Mode)
-                if random.random() < 0.05:
-                    cats = ["Kuliner", "Fashion", "Beauty", "Skincare"]
-                    q = random.choice(["baju umkm", "makanan hits", "skincare lokal", "hijab murah"])
-                    print(f"🌐 Discovery Mode: {q}")
+                # 4. Discovery Mode
+                # If GH Action, always run discovery if no queue. Otherwise 5% chance.
+                should_discover = is_github_action or (random.random() < 0.05)
+
+                if should_discover:
+                    cats = ["Kuliner", "Fashion", "Beauty", "Skincare", "Gadget", "Jasa"]
+                    q = random.choice(["umkm indonesia", "jualan tiktok", "produk lokal", "pengiriman seluruh indonesia", "ready stock"])
+                    cat = random.choice(cats)
+                    print(f"🌐 Discovery Mode ({cat}): {q}")
+
                     search_page = await context.new_page()
-                    await search_page.goto(f"https://www.tiktok.com/search/user?q={q}")
-                    await asyncio.sleep(5)
-                    links = await search_page.query_selector_all('a[href*="/@"]')
-                    users = []
-                    for l in links:
-                        href = await l.get_attribute('href')
-                        m = re.search(r'@([\w.]+)', href)
-                        if m: users.append(m.group(1))
-                    await search_page.close()
-                    for u in users[:5]: await engine.extract_profile(context, u, random.choice(cats))
+                    try:
+                        await search_page.goto(f"https://www.tiktok.com/search/user?q={q}")
+                        await asyncio.sleep(10)
+                        # Scroll a bit
+                        await search_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await asyncio.sleep(3)
+
+                        links = await search_page.query_selector_all('a[href*="/@"]')
+                        users = []
+                        for l in links:
+                            try:
+                                href = await l.get_attribute('href')
+                                m = re.search(r'@([\w.]+)', href)
+                                if m: users.append(m.group(1))
+                            except: pass
+
+                        await search_page.close()
+                        users = list(set(users))[:10]
+                        print(f"📋 Discovery found {len(users)} users")
+                        for u in users:
+                            await engine.extract_profile(context, u, cat)
+                            await asyncio.sleep(random.uniform(5, 10))
+                    except Exception as e:
+                        print(f"⚠️ Discovery Error: {e}")
+                        if not search_page.is_closed(): await search_page.close()
 
             except Exception as e: print(f"⚠️ Loop Error: {e}")
-            await asyncio.sleep(15)
+
+            # Wait time: GH Action faster loop, local slower
+            wait_time = 30 if is_github_action else 15
+            await asyncio.sleep(wait_time)
+
+    await browser.close()
 
 if __name__ == "__main__":
     asyncio.run(main_loop())
