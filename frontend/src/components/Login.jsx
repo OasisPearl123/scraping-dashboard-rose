@@ -11,6 +11,52 @@ function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [pendingProfile, setPendingProfile] = useState(null);
 
+  const getSystemInfo = async () => {
+    let location = "Unknown Location";
+    let ip = "N/A";
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      const data = await res.json();
+      location = `${data.city}, ${data.region}, ${data.country_name}`;
+      ip = data.ip;
+    } catch (e) {}
+
+    return {
+      device: navigator.userAgent.substring(0, 100),
+      location,
+      ip
+    };
+  };
+
+  const sendSecurityAlert = async (type, status, user) => {
+    const info = await getSystemInfo();
+    const message = `🚨 *SECURITY ALERT: ACQUISITION-AI*\n\n👤 *User:* ${user}\n📝 *Event:* ${type}\n📊 *Status:* ${status}\n📍 *Loc:* ${info.location}\n🌐 *IP:* ${info.ip}\n📱 *Device:* ${info.device}`;
+
+    // Log to DB
+    await supabase.from('user_logs').insert({
+      username: user,
+      event_type: type,
+      status: status,
+      device_info: info.device,
+      location_info: info.location,
+      ip_address: info.ip
+    });
+
+    // Send WhatsApp
+    const waUrl = import.meta.env.VITE_WA_API_URL;
+    const waId = import.meta.env.VITE_WA_INSTANCE_ID;
+    const waToken = import.meta.env.VITE_WA_API_TOKEN;
+    const waGroup = import.meta.env.VITE_WA_GROUP_ID;
+
+    if (waUrl && waId && waToken && waGroup) {
+      fetch(`${waUrl}/waInstance${waId}/sendMessage/${waToken}`, {
+        method: 'POST',
+        body: JSON.stringify({ chatId: waGroup, message }),
+        headers: { 'Content-Type': 'application/json' }
+      }).catch(() => {});
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -24,18 +70,21 @@ function Login({ onLogin }) {
 
       if (!profile) {
         toast.error('Username tidak ditemukan!');
+        await sendSecurityAlert('Login Attempt', 'FAILED (User Not Found)', username);
         setLoading(false);
         return;
       }
 
       if (profile.password !== password) {
         toast.error('Password Salah!');
+        await sendSecurityAlert('Login Attempt', 'FAILED (Wrong Password)', username);
         setLoading(false);
         return;
       }
 
       if (profile.is_blocked) {
         toast.error('AKSES DITOLAK: Akun Anda sedang diblokir.');
+        await sendSecurityAlert('Login Attempt', 'DENIED (Blocked)', username);
         setLoading(false);
         return;
       }
@@ -46,6 +95,7 @@ function Login({ onLogin }) {
         toast('Security Check: Masukkan 4 digit PIN Admin', { icon: '🛡️' });
       } else {
         toast.success(`Selamat Datang, ${profile.username}`);
+        await sendSecurityAlert('Login Success', 'SUCCESS (User Access)', profile.username);
         onLogin(profile);
       }
 
@@ -82,9 +132,11 @@ function Login({ onLogin }) {
 
       if (config && config.value === pinString) {
         toast.success('PIN Terverifikasi! Membuka Dashboard...');
+        await sendSecurityAlert('Admin Access', 'SUCCESS (PIN Verified)', pendingProfile.username);
         onLogin(pendingProfile);
       } else {
         toast.error('PIN Keamanan Salah!');
+        await sendSecurityAlert('Admin Access', 'FAILED (Wrong PIN)', pendingProfile.username);
         setPin(['', '', '', '']);
         document.getElementById('pin-0').focus();
       }
