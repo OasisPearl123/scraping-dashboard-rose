@@ -40,6 +40,8 @@ function Dashboard({ user, onLogout }) {
   const [activeScraping, setActiveScraping] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedScrapeCategory, setSelectedScrapeCategory] = useState('General');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareNumber, setShareNumber] = useState('');
 
   // PERSISTENCE: Sync states to localStorage
   useEffect(() => {
@@ -343,18 +345,9 @@ function Dashboard({ user, onLogout }) {
 
   const handleShare = async () => {
     try {
-      const targetNumber = window.prompt("Masukkan nomor WhatsApp tujuan (contoh: 628123456789):");
-
-      if (!targetNumber) {
-        // Fallback: Copy to clipboard if cancelled or empty
-        await navigator.clipboard.writeText(window.location.href);
-        toast.success('Link dashboard berhasil disalin!');
-        return;
-      }
-
-      const cleanNumber = targetNumber.replace(/\D/g, '');
+      const cleanNumber = shareNumber.replace(/\D/g, '');
       if (cleanNumber.length < 10) {
-        toast.error('Nomor WA tidak valid');
+        toast.error('Nomor WA tidak valid (Min. 10 digit)');
         return;
       }
 
@@ -362,8 +355,10 @@ function Dashboard({ user, onLogout }) {
       const waId = import.meta.env.VITE_WA_INSTANCE_ID;
       const waToken = import.meta.env.VITE_WA_API_TOKEN;
 
+      toast.loading('Mengirim ke WhatsApp...', { id: 'wa-share' });
+      setShowShareModal(false);
+
       if (waUrl && waId && waToken) {
-        toast.loading('Mengirim ke WhatsApp...', { id: 'wa-share' });
         const message = `🚀 *ACQUISITION-AI DASHBOARD*\n\nHalo! Cek database seller TikTok UMKM potensial di sini:\n🔗 ${window.location.href}\n\n_Sent via AcquisitionAI System_`;
 
         const res = await fetch(`${waUrl}/waInstance${waId}/sendMessage/${waToken}`, {
@@ -373,20 +368,18 @@ function Dashboard({ user, onLogout }) {
         });
 
         if (res.ok) {
-          toast.success(`Dashboard berhasil dikirim ke WA ${cleanNumber}`, { id: 'wa-share' });
+          toast.success(`Dashboard dikirim ke WA ${cleanNumber}`, { id: 'wa-share' });
+          setShareNumber('');
         } else {
           throw new Error('API Send Failed');
         }
       } else {
-        // Browser fallback (Direct WhatsApp Web)
         window.open(`https://wa.me/${cleanNumber}?text=Cek dashboard AcquisitionAI: ${window.location.href}`, '_blank');
+        toast.dismiss('wa-share');
       }
     } catch (err) {
       toast.error('Gagal mengirim via API. Membuka WhatsApp Web...', { id: 'wa-share' });
-      const cleanNumber = (targetNumber || '').replace(/\D/g, '');
-      if (cleanNumber) {
-        window.open(`https://wa.me/${cleanNumber}?text=Cek dashboard: ${window.location.href}`, '_blank');
-      }
+      window.open(`https://wa.me/${shareNumber.replace(/\D/g, '')}?text=Cek dashboard: ${window.location.href}`, '_blank');
     }
   };
 
@@ -421,7 +414,7 @@ function Dashboard({ user, onLogout }) {
           </div>
           <div className="flex items-center gap-4">
             <button
-              onClick={handleShare}
+              onClick={() => setShowShareModal(true)}
               className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all"
             >
               <RefreshCw className="w-3 h-3" /> Bagikan <ChevronDown className="w-3 h-3" />
@@ -687,6 +680,65 @@ function Dashboard({ user, onLogout }) {
           </div>
         )}
       </main>
+
+      {/* SHARE MODAL ELEGANT */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-fade-in">
+          <div className="absolute inset-0 bg-[#0b0d15]/90 backdrop-blur-md" onClick={() => setShowShareModal(false)}></div>
+          <div className="bg-[#12141d] border border-white/10 w-full max-w-[400px] rounded-[2.5rem] p-10 shadow-2xl relative z-10 animate-fade-in-up">
+            <div className="text-center space-y-4 mb-8">
+               <div className="inline-flex p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
+                 <RefreshCw className="w-8 h-8 text-emerald-500" />
+               </div>
+               <div className="space-y-1">
+                 <h3 className="text-xl font-black italic uppercase tracking-tight">Bagikan Dashboard</h3>
+                 <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Masukkan nomor WhatsApp untuk mengirim link akses secara otomatis</p>
+               </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Nomor WhatsApp</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: 628123456789"
+                  value={shareNumber}
+                  onChange={(e) => setShareNumber(e.target.value)}
+                  className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-5 text-xl font-black text-emerald-400 placeholder:text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                 <button
+                   onClick={() => {
+                     navigator.clipboard.writeText(window.location.href);
+                     toast.success('Link disalin!');
+                     setShowShareModal(false);
+                   }}
+                   className="py-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-[10px] font-black uppercase text-slate-400 transition-all"
+                 >
+                   Salin Link
+                 </button>
+                 <button
+                   onClick={handleShare}
+                   disabled={shareNumber.length < 10}
+                   className="py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-2xl text-[10px] font-black uppercase text-white shadow-xl shadow-emerald-600/20 transition-all"
+                 >
+                   Kirim Sekarang
+                 </button>
+              </div>
+
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="w-full text-[10px] font-black uppercase text-slate-700 hover:text-slate-500 transition-colors pt-2"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
