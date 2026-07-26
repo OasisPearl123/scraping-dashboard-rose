@@ -67,9 +67,24 @@ function SellerTable({ sellers, loading }) {
                   </td>
 
                   <td className="px-8 py-10 align-top">
-                    <span className="text-sm font-bold tracking-widest font-mono text-slate-600">
-                      {seller.phone_number || 'N/A'}
-                    </span>
+                    {seller.phone_number && seller.phone_number !== 'N/A' ? (
+                      <a
+                        href={`https://wa.me/${seller.phone_number.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-2 group/wa"
+                      >
+                        <span className="text-sm font-bold tracking-widest font-mono text-emerald-500 group-hover/wa:text-emerald-400 underline decoration-emerald-500/30 transition-colors">
+                          {seller.phone_number}
+                        </span>
+                        <ExternalLink className="w-3 h-3 text-emerald-600 opacity-0 group-hover/wa:opacity-100 transition-all" />
+                      </a>
+                    ) : (
+                      <span className="text-sm font-bold tracking-widest font-mono text-slate-600">
+                        N/A
+                      </span>
+                    )}
                   </td>
 
                   <td className="px-8 py-10 align-top">
