@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SellerTable from './SellerTable';
 import UserManagement from './UserManagement';
 import { supabase } from '../lib/supabase';
+import * as XLSX from 'xlsx';
 import {
   LogOut, TrendingUp, Users, RefreshCw, Search, Square, MapPin, ChevronDown
 } from 'lucide-react';
@@ -313,6 +314,52 @@ function Dashboard({ user, onLogout }) {
     onLogout();
   };
 
+  const handleDownloadExcel = () => {
+    if (filteredSellers.length === 0) {
+      toast.error('Tidak ada data untuk didownload');
+      return;
+    }
+
+    const dataToExport = filteredSellers.map(s => ({
+      'Username': s.username,
+      'Nama Display': s.display_name,
+      'Followers': s.followers_count,
+      'No HP': s.phone_number,
+      'Kategori': s.category,
+      'Provinsi': s.province,
+      'Kota': s.city,
+      'Kecamatan': s.district,
+      'Potensi Skor': s.potential_score,
+      'Analisis AI': s.potential_reason,
+      'URL TikTok': s.tiktok_url
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Sellers");
+    XLSX.writeFile(workbook, `TikTok_Sellers_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Excel berhasil didownload!');
+  };
+
+  const handleShare = async () => {
+    try {
+      const shareData = {
+        title: 'AcquisitionAI - Dashboard',
+        text: 'Cek database seller TikTok UMKM potensial di sini!',
+        url: window.location.href
+      };
+
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success('Link dashboard berhasil disalin!');
+      }
+    } catch (err) {
+      toast.error('Gagal membagikan link');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0d15] text-white font-['Inter']">
       <Toaster position="top-right" />
@@ -343,7 +390,10 @@ function Dashboard({ user, onLogout }) {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all">
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all"
+            >
               <RefreshCw className="w-3 h-3" /> Bagikan <ChevronDown className="w-3 h-3" />
             </button>
             <div className="w-10 h-10 bg-slate-900 border border-white/5 rounded-xl flex items-center justify-center text-slate-500 font-black text-xs cursor-pointer hover:bg-slate-800 transition-all">?</div>
@@ -541,7 +591,10 @@ function Dashboard({ user, onLogout }) {
                       <option value="followers_count_desc">📈 Follower Terbanyak</option>
                     </select>
 
-                    <button className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all">
+                    <button
+                      onClick={handleDownloadExcel}
+                      className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all"
+                    >
                        ⬇️ Download Excel
                     </button>
 
