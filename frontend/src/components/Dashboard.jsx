@@ -343,20 +343,50 @@ function Dashboard({ user, onLogout }) {
 
   const handleShare = async () => {
     try {
-      const shareData = {
-        title: 'AcquisitionAI - Dashboard',
-        text: 'Cek database seller TikTok UMKM potensial di sini!',
-        url: window.location.href
-      };
+      const targetNumber = window.prompt("Masukkan nomor WhatsApp tujuan (contoh: 628123456789):");
 
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
+      if (!targetNumber) {
+        // Fallback: Copy to clipboard if cancelled or empty
         await navigator.clipboard.writeText(window.location.href);
         toast.success('Link dashboard berhasil disalin!');
+        return;
+      }
+
+      const cleanNumber = targetNumber.replace(/\D/g, '');
+      if (cleanNumber.length < 10) {
+        toast.error('Nomor WA tidak valid');
+        return;
+      }
+
+      const waUrl = import.meta.env.VITE_WA_API_URL;
+      const waId = import.meta.env.VITE_WA_INSTANCE_ID;
+      const waToken = import.meta.env.VITE_WA_API_TOKEN;
+
+      if (waUrl && waId && waToken) {
+        toast.loading('Mengirim ke WhatsApp...', { id: 'wa-share' });
+        const message = `🚀 *ACQUISITION-AI DASHBOARD*\n\nHalo! Cek database seller TikTok UMKM potensial di sini:\n🔗 ${window.location.href}\n\n_Sent via AcquisitionAI System_`;
+
+        const res = await fetch(`${waUrl}/waInstance${waId}/sendMessage/${waToken}`, {
+          method: 'POST',
+          body: JSON.stringify({ chatId: `${cleanNumber}@c.us`, message }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res.ok) {
+          toast.success(`Dashboard berhasil dikirim ke WA ${cleanNumber}`, { id: 'wa-share' });
+        } else {
+          throw new Error('API Send Failed');
+        }
+      } else {
+        // Browser fallback (Direct WhatsApp Web)
+        window.open(`https://wa.me/${cleanNumber}?text=Cek dashboard AcquisitionAI: ${window.location.href}`, '_blank');
       }
     } catch (err) {
-      toast.error('Gagal membagikan link');
+      toast.error('Gagal mengirim via API. Membuka WhatsApp Web...', { id: 'wa-share' });
+      const cleanNumber = (targetNumber || '').replace(/\D/g, '');
+      if (cleanNumber) {
+        window.open(`https://wa.me/${cleanNumber}?text=Cek dashboard: ${window.location.href}`, '_blank');
+      }
     }
   };
 
