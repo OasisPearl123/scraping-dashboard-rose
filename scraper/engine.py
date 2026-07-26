@@ -21,6 +21,12 @@ class Result:
     def __init__(self, data):
         self.data = data
 
+def log(msg, type="INFO"):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    color = "\033[94m" if type == "INFO" else "\033[92m" if type == "SUCCESS" else "\033[93m" if type == "WARNING" else "\033[91m"
+    reset = "\033[0m"
+    print(f"[{timestamp}] {color}{type:7}{reset} | {msg}", flush=True)
+
 # 2. ROBUST SUPABASE & DB CLIENT
 class SupabaseEngine:
     def __init__(self):
@@ -44,13 +50,13 @@ class SupabaseEngine:
             try:
                 self.client = create_client(self.url, k)
                 self.client.table('system_status').select('id').limit(1).execute()
-                print(f"✅ Supabase REST API connected ({'service' if k == self.service_key else 'anon'} key)")
+                log(f"Supabase REST API connected ({'service' if k == self.service_key else 'anon'} key)", "SUCCESS")
                 break
             except Exception:
                 self.client = None
 
         if not self.client:
-            print("⚠️ All REST API keys failed. Using Direct DB Fallback.")
+            log("All REST API keys failed. Using Direct DB Fallback.", "WARNING")
 
     def query(self, table):
         return TableProxy(self, table)
@@ -91,7 +97,7 @@ class TableProxy:
                 cur.close()
                 conn.close()
                 return Result(data)
-            except Exception as e: print(f"❌ DB Error: {e}")
+            except Exception as e: log(f"DB Error: {e}", "ERROR")
         return Result([])
 
     def update(self, data):
@@ -112,7 +118,7 @@ class TableProxy:
                 cur.close()
                 conn.close()
                 return True
-            except Exception as e: print(f"❌ DB Update Error: {e}")
+            except Exception as e: log(f"DB Update Error: {e}", "ERROR")
         return None
 
     def upsert(self, data, on_conflict='username'):
@@ -131,11 +137,11 @@ class TableProxy:
                 cur.close()
                 conn.close()
                 return res
-            except Exception as e: print(f"❌ DB Upsert Error: {e}")
+            except Exception as e: log(f"DB Upsert Error: {e}", "ERROR")
         return None
 
 def run_migrations(db_engine):
-    print("🔄 Syncing Database Schema...")
+    log("Syncing Database Schema...")
     sql_dir = base_dir / 'supabase' / 'migrations'
     if not sql_dir.exists(): return
 
@@ -144,14 +150,14 @@ def run_migrations(db_engine):
         conn.autocommit = True
         cur = conn.cursor()
         for sql_file in sorted(sql_dir.glob('*.sql')):
-            print(f"  🚀 Migrating: {sql_file.name}")
+            log(f"Migrating: {sql_file.name}")
             with open(sql_file, 'r') as f:
                 content = f.read()
                 if content.strip(): cur.execute(content)
         cur.close()
         conn.close()
-        print("✅ Database is up to date.")
-    except Exception as e: print(f"⚠️ Migration warning: {e}")
+        log("Database is up to date.", "SUCCESS")
+    except Exception as e: log(f"Migration warning: {e}", "WARNING")
 
 # 3. CORE SCRAPER LOGIC
 class TiktokEngine:
@@ -166,7 +172,7 @@ class TiktokEngine:
         }
 
     def load_regions(self):
-        print("📥 Loading Regions...")
+        log("Loading Regions...")
         provinces = self.db.query('provinces').select('*').execute().data
         cities = []
         if self.db.use_db:
@@ -239,9 +245,9 @@ class TiktokEngine:
                 'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
             }
             self.db.query('sellers').upsert(data)
-            print(f"✅ Saved @{username} (Loc: {city or prov})")
+            log(f"Saved @{username} (Loc: {city or prov})", "SUCCESS")
             return True
-        except Exception as e: print(f"❌ Error @{username}: {str(e)[:50]}")
+        except Exception as e: log(f"Error @{username}: {str(e)[:50]}", "ERROR")
         finally: await page.close()
 
     def check_wa(self):
@@ -272,12 +278,12 @@ async def main_loop():
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
-        print(f"🚀 ENGINE START: Monitoring Dashboard & WA... (Worker: {is_github_action})")
+        log(f"ENGINE START: Monitoring Dashboard & WA... (Worker: {is_github_action})")
 
         while True:
             # Check duration if in GitHub Action
             if duration_limit and (datetime.now() - start_time > duration_limit):
-                print("⏰ Duration reached in GitHub Action. Stopping.")
+                log("Duration reached in GitHub Action. Stopping.", "WARNING")
                 break
 
             try:
@@ -295,7 +301,7 @@ async def main_loop():
                     for task in res.data:
                         tid, q = task['id'], task['query']
                         db.query('search_queries').update({'status': 'processing'}).eq('id', tid).execute()
-                        print(f"🔎 Query: {q}")
+                        log(f"Processing Query: {q}")
 
                         if q.startswith('@'):
                             await engine.extract_profile(context, q.replace('@',''))
@@ -326,7 +332,7 @@ async def main_loop():
                     cats = ["Kuliner", "Fashion", "Beauty", "Skincare", "Gadget", "Jasa"]
                     q = random.choice(["umkm indonesia", "jualan tiktok", "produk lokal", "pengiriman seluruh indonesia", "ready stock"])
                     cat = random.choice(cats)
-                    print(f"🌐 Discovery Mode ({cat}): {q}")
+                    log(f"Discovery Mode ({cat}): {q}")
 
                     search_page = await context.new_page()
                     try:
@@ -347,15 +353,15 @@ async def main_loop():
 
                         await search_page.close()
                         users = list(set(users))[:10]
-                        print(f"📋 Discovery found {len(users)} users")
+                        log(f"Discovery found {len(users)} users")
                         for u in users:
                             await engine.extract_profile(context, u, cat)
                             await asyncio.sleep(random.uniform(5, 10))
                     except Exception as e:
-                        print(f"⚠️ Discovery Error: {e}")
+                        log(f"Discovery Error: {e}", "WARNING")
                         if not search_page.is_closed(): await search_page.close()
 
-            except Exception as e: print(f"⚠️ Loop Error: {e}")
+            except Exception as e: log(f"Loop Error: {e}", "ERROR")
 
             # Wait time: GH Action faster loop, local slower
             wait_time = 30 if is_github_action else 15

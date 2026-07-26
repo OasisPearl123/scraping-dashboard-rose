@@ -47,11 +47,28 @@ def run():
 
     env = os.environ.copy()
     env['PYTHONPATH'] = str(scraper_dir)
+    env['PYTHONUNBUFFERED'] = '1'
 
     try:
-        proc = subprocess.Popen([str(venv_python), str(scraper_dir / 'engine.py')], cwd=scraper_dir, env=env)
+        proc = subprocess.Popen(
+            [str(venv_python), str(scraper_dir / 'engine.py')],
+            cwd=scraper_dir,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
         print("\n✨ SYSTEM ONLINE!")
-        print("💡 Monitor the dashboard at the provided frontend URL.")
+        print("💡 Monitor the dashboard at the provided frontend URL.\n")
+
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if line:
+                print(line, end='', flush=True)
+
         proc.wait()
     except KeyboardInterrupt:
         print("\n🛑 Shutting down...")
