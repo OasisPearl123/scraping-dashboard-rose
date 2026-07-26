@@ -287,7 +287,32 @@ function Dashboard({ user, onLogout }) {
                   </div>
                 )}
 
-                <SellerTable sellers={filteredSellers} loading={loading} />
+                <SellerTable sellers={filteredSellers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)} loading={loading} />
+
+                {/* Pagination Controls */}
+                {!loading && filteredSellers.length > itemsPerPage && (
+                  <div className="mt-12 flex items-center justify-center gap-6">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="px-8 py-4 bg-white/5 border border-white/5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 transition-all active:scale-95"
+                    >
+                      Sebelumnya
+                    </button>
+                    <div className="flex items-center gap-3 px-6 py-3 bg-slate-900/50 rounded-2xl border border-white/5">
+                      <span className="text-[10px] font-black uppercase text-slate-500">Hal</span>
+                      <span className="text-xl font-black text-indigo-400 italic">{currentPage}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">dari {Math.ceil(filteredSellers.length / itemsPerPage)}</span>
+                    </div>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredSellers.length / itemsPerPage)))}
+                      disabled={currentPage === Math.ceil(filteredSellers.length / itemsPerPage)}
+                      className="px-8 py-4 bg-white/5 border border-white/5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 transition-all active:scale-95"
+                    >
+                      Selanjutnya
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
