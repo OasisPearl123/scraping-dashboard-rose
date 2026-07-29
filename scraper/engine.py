@@ -58,18 +58,37 @@ class SupabaseEngine:
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
-            # Using Llama 3.3 70B for high intelligence as requested
-            prompt = f"Analyze TikTok profile: @{username}. Bio: {bio}. Followers: {followers}. Target Category: {category}. Is this an Indonesian SME/Seller selling products or services in the {category} category? Answer ONLY 'YES' or 'NO'."
+
+            # Ultra-intelligent prompt for Indonesian SME validation & Language check
+            prompt = f"""
+            Analyze TikTok profile:
+            Username: @{username}
+            Bio: {bio}
+            Followers: {followers}
+            Target Category: {category}
+
+            Strict Requirements:
+            1. Language: MUST be in Indonesian (Bahasa Indonesia). Reject foreign languages (Greek, Arabic, English-only, etc.).
+            2. Business Type: MUST be an Indonesian SME (UMKM) or Local Seller.
+            3. Category Match: MUST strictly sell items/services related to {category}.
+
+            Is this a valid Indonesian local seller for {category} with Indonesian bio?
+            Answer ONLY 'VALID' or 'INVALID'.
+            """
+
             data = {
                 "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1
+                "temperature": 0.0
             }
-            resp = requests.post(url, headers=headers, json=data, timeout=12).json()
+            resp = requests.post(url, headers=headers, json=data, timeout=15).json()
             answer = resp['choices'][0]['message']['content'].strip().upper()
-            return "YES" in answer
+            return "VALID" in answer
         except Exception as e:
             log(f"AI Error: {e}", "WARNING")
+            # Secondary heuristic check if AI fails
+            if any(char for char in bio if ord(char) > 1000): # Detect non-latin (Greek/Arabic etc)
+                return False
             return True
 
 class TableProxy:
