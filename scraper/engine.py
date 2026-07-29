@@ -54,14 +54,15 @@ class SupabaseEngine:
         return TableProxy(self, table)
 
     def ai_classify(self, username, bio, followers, category):
-        # 1. HEURISTIC CHECK: Detect Non-Latin characters (Greek, Russian, Arabic, etc.)
-        # Indonesian uses Latin script. If we see high count of non-latin, reject immediately.
+        # 1. HEURISTIC: Strict non-latin script rejection
         clean_bio = (bio or "").strip()
         if clean_bio:
-            # Characters outside basic Latin, Extended Latin, and common punctuation
-            non_indo_pattern = re.compile(r'[^\u0000-\u024F\u1E00-\u1EFF\s\d.,!?;:()\'"%-]')
-            if len(non_indo_pattern.findall(clean_bio)) > (len(clean_bio) * 0.1):
-                log(f"Heuristic Reject @{username}: Foreign script detected", "WARNING")
+            # Allow only Basic Latin, numbers, and very common punctuation.
+            # This rejects Greek, Arabic, Russian, Chinese, etc.
+            foreign_script = re.compile(r'[^\x00-\x7F\s\d.,!?;:()\'"%-]')
+            non_latin_count = len(foreign_script.findall(clean_bio))
+            if non_latin_count > (len(clean_bio) * 0.05): # Max 5% tolerance for emojis
+                log(f"Strict Language Reject @{username}: Foreign script detected", "WARNING")
                 return False
 
         if not self.groq_token: return True
@@ -69,26 +70,23 @@ class SupabaseEngine:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
 
-            # Ultra-strict multi-layer prompt for Indonesian SME & Language validation
+            # Ultra-strict AI instructions for 100% Indonesian compliance
             prompt = f"""
-            SYSTEM: You are a professional Indonesian SME (UMKM) auditor.
-            Evaluate TikTok profile: @{username}
-            Bio: "{bio}"
-            Category: {category}
+            SYSTEM: Professional Indonesian Content Auditor.
+            PROFILE: @{username}
+            BIO: "{bio}"
+            EXPECTED CATEGORY: {category}
 
-            STRICT AUDIT RULES:
-            1. LANGUAGE: Bio MUST be primarily in Indonesian (Bahasa Indonesia).
-               - REJECT if bio is in Greek, Russian, Arabic, Chinese, or purely English.
-               - ACCEPT Indonesian slang (Bahasa Gaul/SMS).
-            2. INDONESIAN SME: Account MUST be a local Indonesian seller/business.
-            3. CATEGORY MATCH: Business MUST sell items/services in {category}.
+            CRITICAL RULES:
+            1. FULL BAHASA INDONESIA: The bio MUST be written in Indonesian.
+               - REJECT if bio is primarily English.
+               - REJECT if bio has Greek, Arabic, or other foreign languages.
+               - ACCEPT only Indonesian (including local slang/Bahasa Gaul).
+            2. INDONESIAN SME: Account MUST be a local Indonesian seller.
+            3. CATEGORY MATCH: Must be selling products in {category}.
 
-            DECISION:
-            - If bio is NOT Indonesian -> Answer 'INVALID'
-            - If account is NOT a local SME -> Answer 'INVALID'
-            - If bio is Indonesian AND is a local SME -> Answer 'VALID'
-
-            ANSWER ONLY 'VALID' OR 'INVALID'.
+            Is this profile 100% Indonesian and a valid local business?
+            Answer ONLY 'YES' or 'NO'.
             """
 
             data = {
@@ -99,14 +97,13 @@ class SupabaseEngine:
             resp = requests.post(url, headers=headers, json=data, timeout=15).json()
             answer = resp['choices'][0]['message']['content'].strip().upper()
 
-            is_valid = "VALID" in answer and "INVALID" not in answer
+            is_valid = "YES" in answer and "NO" not in answer
             if not is_valid:
-                log(f"AI Reject @{username}: Not Indonesian or not a local SME", "WARNING")
+                log(f"AI Reject @{username}: Does not meet strict Indonesian SME criteria", "WARNING")
             return is_valid
-
         except Exception as e:
             log(f"AI Logic Error: {e}", "WARNING")
-            return True # Conservative fallback
+            return True
 
 class TableProxy:
     def __init__(self, engine, table):
@@ -192,14 +189,11 @@ class TiktokEngine:
             f = f_raw.upper()
             followers = int(float(f.replace('M',''))*1e6) if 'M' in f else int(float(f.replace('K',''))*1e3) if 'K' in f else int(''.join(filter(str.isdigit, f)) or 0)
 
-            # RULE: MUST BE < 100K FOLLOWERS
             if followers > 100000:
                 log(f"Skipping @{username}: {followers} followers (too big)", "WARNING")
                 return False
 
-            # AI VALIDATION
             if not self.db.ai_classify(username, bio, followers, category):
-                log(f"Skipping @{username}: AI rejected as non-SME/wrong category", "WARNING")
                 return False
 
             full = (name + " " + bio).lower()
@@ -215,7 +209,7 @@ class TiktokEngine:
                 'bio': bio, 'followers_count': followers, 'phone_number': (re.search(r'(?:\+62|62|08)[0-9]{9,12}', bio.replace(" ","").replace("-","")) or ["N/A"])[0],
                 'category': category, 'province': prov or "Indonesia", 'city': city or "",
                 'potential_score': int(min((followers/5000)+50, 100)),
-                'potential_reason': f"AI Verified SME in {category}. Located in {city or prov or 'Indonesia'}.",
+                'potential_reason': f"Verified SME in {category}. Indonesian profile.",
                 'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
             }
             self.db.query('sellers').upsert(data)
@@ -232,7 +226,6 @@ async def main_loop():
     worker_index = int(os.environ.get('WORKER_INDEX', 0))
     total_workers = 15
 
-    # Slice cities for this worker
     chunk_size = len(all_cities) // total_workers
     start = worker_index * chunk_size
     end = start + chunk_size if worker_index < total_workers - 1 else len(all_cities)
