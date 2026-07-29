@@ -54,26 +54,41 @@ class SupabaseEngine:
         return TableProxy(self, table)
 
     def ai_classify(self, username, bio, followers, category):
+        # 1. HEURISTIC CHECK: Detect Non-Latin characters (Greek, Russian, Arabic, etc.)
+        # Indonesian uses Latin script. If we see high count of non-latin, reject immediately.
+        clean_bio = (bio or "").strip()
+        if clean_bio:
+            # Characters outside basic Latin, Extended Latin, and common punctuation
+            non_indo_pattern = re.compile(r'[^\u0000-\u024F\u1E00-\u1EFF\s\d.,!?;:()\'"%-]')
+            if len(non_indo_pattern.findall(clean_bio)) > (len(clean_bio) * 0.1):
+                log(f"Heuristic Reject @{username}: Foreign script detected", "WARNING")
+                return False
+
         if not self.groq_token: return True
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
 
-            # Ultra-intelligent prompt for Indonesian SME validation & Language check
+            # Ultra-strict multi-layer prompt for Indonesian SME & Language validation
             prompt = f"""
-            Analyze TikTok profile:
-            Username: @{username}
-            Bio: {bio}
-            Followers: {followers}
-            Target Category: {category}
+            SYSTEM: You are a professional Indonesian SME (UMKM) auditor.
+            Evaluate TikTok profile: @{username}
+            Bio: "{bio}"
+            Category: {category}
 
-            Strict Requirements:
-            1. Language: MUST be in Indonesian (Bahasa Indonesia). Reject foreign languages (Greek, Arabic, English-only, etc.).
-            2. Business Type: MUST be an Indonesian SME (UMKM) or Local Seller.
-            3. Category Match: MUST strictly sell items/services related to {category}.
+            STRICT AUDIT RULES:
+            1. LANGUAGE: Bio MUST be primarily in Indonesian (Bahasa Indonesia).
+               - REJECT if bio is in Greek, Russian, Arabic, Chinese, or purely English.
+               - ACCEPT Indonesian slang (Bahasa Gaul/SMS).
+            2. INDONESIAN SME: Account MUST be a local Indonesian seller/business.
+            3. CATEGORY MATCH: Business MUST sell items/services in {category}.
 
-            Is this a valid Indonesian local seller for {category} with Indonesian bio?
-            Answer ONLY 'VALID' or 'INVALID'.
+            DECISION:
+            - If bio is NOT Indonesian -> Answer 'INVALID'
+            - If account is NOT a local SME -> Answer 'INVALID'
+            - If bio is Indonesian AND is a local SME -> Answer 'VALID'
+
+            ANSWER ONLY 'VALID' OR 'INVALID'.
             """
 
             data = {
@@ -83,13 +98,15 @@ class SupabaseEngine:
             }
             resp = requests.post(url, headers=headers, json=data, timeout=15).json()
             answer = resp['choices'][0]['message']['content'].strip().upper()
-            return "VALID" in answer
+
+            is_valid = "VALID" in answer and "INVALID" not in answer
+            if not is_valid:
+                log(f"AI Reject @{username}: Not Indonesian or not a local SME", "WARNING")
+            return is_valid
+
         except Exception as e:
-            log(f"AI Error: {e}", "WARNING")
-            # Secondary heuristic check if AI fails
-            if any(char for char in bio if ord(char) > 1000): # Detect non-latin (Greek/Arabic etc)
-                return False
-            return True
+            log(f"AI Logic Error: {e}", "WARNING")
+            return True # Conservative fallback
 
 class TableProxy:
     def __init__(self, engine, table):
