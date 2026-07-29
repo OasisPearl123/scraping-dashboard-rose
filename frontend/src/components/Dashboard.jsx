@@ -147,13 +147,14 @@ function Dashboard({ user, onLogout }) {
       const cleanNumber = shareNumber.replace(/\D/g, '');
       if (cleanNumber.length < 10) { toast.error('Nomor WA tidak valid'); return; }
       const waUrl = import.meta.env.VITE_WA_API_URL, waId = import.meta.env.VITE_WA_INSTANCE_ID, waToken = import.meta.env.VITE_WA_API_TOKEN;
+      const dashboardUrl = "https://scraping-dashboard-rose.vercel.app/";
       setShowShareModal(false);
       if (waUrl && waId && waToken) {
-        const msg = `🚀 *ACQUISITION DASHBOARD*\n\nHalo! Cek database seller TikTok UMKM potensial di sini:\n🔗 ${window.location.href}`;
+        const msg = `🚀 *ACQUISITION DASHBOARD*\n\nHalo! Cek database seller TikTok UMKM potensial di sini:\n🔗 ${dashboardUrl}`;
         const res = await fetch(`${waUrl}/waInstance${waId}/sendMessage/${waToken}`, { method: 'POST', body: JSON.stringify({ chatId: `${cleanNumber}@c.us`, message: msg }), headers: { 'Content-Type': 'application/json' } });
         if (res.ok) { toast.success('Berhasil dikirim ke WA!'); setShareNumber(''); } else throw new Error();
-      } else { window.open(`https://wa.me/${cleanNumber}?text=Cek dashboard: ${window.location.href}`, '_blank'); }
-    } catch (err) { window.open(`https://wa.me/${shareNumber.replace(/\D/g, '')}?text=Cek dashboard: ${window.location.href}`, '_blank'); }
+      } else { window.open(`https://wa.me/${cleanNumber}?text=Cek dashboard: ${dashboardUrl}`, '_blank'); }
+    } catch (err) { window.open(`https://wa.me/${shareNumber.replace(/\D/g, '')}?text=Cek dashboard: https://scraping-dashboard-rose.vercel.app/`, '_blank'); }
   };
 
   return (
@@ -346,7 +347,7 @@ function Dashboard({ user, onLogout }) {
             <div className="space-y-4">
               <input type="text" placeholder="Contoh: 628123456789" value={shareNumber} onChange={(e) => setShareNumber(e.target.value)} className="w-full bg-[#161922] border border-white/5 rounded-2xl px-6 py-5 text-xl font-black text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-500" />
               <div className="grid grid-cols-2 gap-4">
-                 <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link disalin!'); setShowShareModal(false); }} className="py-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-black uppercase text-slate-400 transition-all">Salin Link</button>
+                 <button onClick={() => { navigator.clipboard.writeText("https://scraping-dashboard-rose.vercel.app/"); toast.success('Link disalin!'); setShowShareModal(false); }} className="py-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-black uppercase text-slate-400 transition-all">Salin Link</button>
                  <button onClick={handleShare} className="py-4 bg-emerald-600 rounded-2xl text-[10px] font-black uppercase text-white shadow-xl shadow-emerald-600/20">Kirim WA</button>
               </div>
             </div>
