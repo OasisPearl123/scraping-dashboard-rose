@@ -1,19 +1,13 @@
-name: TikTok Multi-Province Scraper (Group A)
+name: TikTok Scraper Worker 11
 
 on:
   schedule:
-    - cron: '0 */2 * * *' # Every 2 hours
+    - cron: '40 */6 * * *'
   workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        province: ['Aceh', 'Sumatera Utara', 'Sumatera Barat', 'Riau', 'Kepulauan Riau', 'Jambi', 'Bengkulu', 'Sumatera Selatan', 'Kepulauan Bangka Belitung', 'Lampung', 'DKI Jakarta', 'Banten', 'Jawa Barat', 'Jawa Tengah', 'DI Yogyakarta', 'Jawa Timur', 'Bali', 'Nusa Tenggara Barat', 'Nusa Tenggara Timur']
-    
-    name: ${{ matrix.province }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -30,17 +24,14 @@ jobs:
           python -m playwright install chromium
           python -m playwright install-deps chromium
 
-      - name: Run Scraper Engine
+      - name: Run Engine
         env:
-          PYTHONUNBUFFERED: "1"
-          TARGET_PROVINCE: ${{ matrix.province }}
+          PYTHONUNBUFFERED: '1'
+          WORKER_INDEX: '10'
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           PASSWORD_SUPABASE: ${{ secrets.PASSWORD_SUPABASE }}
-          WA_API_URL: ${{ secrets.WA_API_URL }}
-          WA_INSTANCE_ID: ${{ secrets.WA_INSTANCE_ID }}
-          WA_API_TOKEN: ${{ secrets.WA_API_TOKEN }}
-          WA_GROUP_ID: ${{ secrets.WA_GROUP_ID }}
+          token_groq: ${{ secrets.token_groq }}
         run: python scraper/engine.py
