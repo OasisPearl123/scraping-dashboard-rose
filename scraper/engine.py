@@ -244,16 +244,23 @@ async def main_loop():
     if db.use_db: run_migrations(db)
     engine = TiktokEngine(db)
 
-    worker_id = int(os.environ.get('WORKER_ID', 1))
+    target_province = os.environ.get('TARGET_PROVINCE')
     is_github_action = os.environ.get('GITHUB_ACTIONS') == 'true'
     start_time = datetime.now()
     duration_limit = timedelta(hours=5, minutes=45) if is_github_action else None
 
-    # Systematic coverage: Split cities among workers
+    # Systematic coverage logic
     all_cities = engine.regions['cities']
-    random.shuffle(all_cities)
-    my_cities = [c for i, c in enumerate(all_cities) if (i % 3) == (worker_id - 1)]
-    log(f"Worker {worker_id} assigned {len(my_cities)} cities for systematic search.", "INFO")
+    if target_province:
+        my_cities = [c for c in all_cities if c['provinces']['name'] == target_province]
+        log(f"Worker focused on Province: {target_province} ({len(my_cities)} cities)", "INFO")
+    else:
+        worker_id = int(os.environ.get('WORKER_ID', 1))
+        random.shuffle(all_cities)
+        my_cities = [c for i, c in enumerate(all_cities) if (i % 3) == (worker_id - 1)]
+        log(f"Worker {worker_id} assigned {len(my_cities)} cities.", "INFO")
+
+    if not my_cities: my_cities = all_cities # Fallback
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -266,9 +273,10 @@ async def main_loop():
 
             try:
                 # 1. Heartbeat
-                db.query('system_status').upsert({'id': f'worker_{worker_id}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
+                hb_id = f"worker_{target_province.replace(' ','_')}" if target_province else f"worker_{os.environ.get('WORKER_ID','1')}"
+                db.query('system_status').upsert({'id': hb_id, 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
 
-                # 2. Check Tasks (Priority)
+                # 2. Check Tasks (High Priority)
                 res = db.query('search_queries').select('*').eq('status', 'pending').execute()
                 if res.data:
                     for task in res.data:
@@ -281,43 +289,55 @@ async def main_loop():
                             await search_page.goto(f"https://www.tiktok.com/search/user?q={q}")
                             await asyncio.sleep(10)
                             links = await search_page.query_selector_all('a[href*="/@"]')
-                            users = [re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]
+                            users = []
+                            for l in links:
+                                try:
+                                    h = await l.get_attribute('href')
+                                    u = re.search(r'@([\w.]+)', h)
+                                    if u: users.append(u.group(1))
+                                except: pass
                             await search_page.close()
-                            for u in list(set(users))[:15]: await engine.extract_profile(context, u, "Search")
+                            for u in list(set(users))[:20]: # Increased to 20
+                                await engine.extract_profile(context, u, "Search")
                         db.query('search_queries').update({'status': 'completed'}).eq('id', tid).execute()
 
-                # 3. Systematic Discovery
+                # 3. Systematic Discovery (Aggressive for 20k target)
                 city_obj = random.choice(my_cities)
                 cat = random.choice(engine.categories)
                 search_q = f"{cat.lower()} {city_obj['name'].lower()}"
-                log(f"🔍 Worker {worker_id} systematic search: {search_q}", "INFO")
+                log(f"🔍 Systematic search: {search_q}", "INFO")
 
                 search_page = await context.new_page()
                 try:
                     await search_page.goto(f"https://www.tiktok.com/search/user?q={search_q}")
                     await asyncio.sleep(10)
-                    for _ in range(3):
+                    for _ in range(5): # Increased scroll depth
                         await search_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                         await asyncio.sleep(2)
 
                     links = await search_page.query_selector_all('a[href*="/@"]')
                     users = []
                     for l in links:
-                        m = re.search(r'@([\w.]+)', await l.get_attribute('href'))
-                        if m: users.append(m.group(1))
+                        try:
+                            h = await l.get_attribute('href')
+                            m = re.search(r'@([\w.]+)', h)
+                            if m: users.append(m.group(1))
+                        except: pass
 
                     await search_page.close()
-                    users = list(set(users))[:12]
-                    log(f"Found {len(users)} potential users in {city_obj['name']}")
-                    for u in users:
+                    unique_users = list(set(users))[:25] # Increased to 25
+                    log(f"Found {len(unique_users)} users in {city_obj['name']}")
+                    for u in unique_users:
                         await engine.extract_profile(context, u, cat)
-                        await asyncio.sleep(random.uniform(5, 8))
+                        await asyncio.sleep(random.uniform(3, 6)) # Faster delay
                 except Exception as e:
                     log(f"Discovery Error: {e}", "WARNING")
                     if not search_page.is_closed(): await search_page.close()
 
             except Exception as e: log(f"Loop Error: {e}", "ERROR")
-            await asyncio.sleep(15)
+            await asyncio.sleep(10)
+
+    await browser.close()
 
     await browser.close()
 
