@@ -23,6 +23,10 @@ def log(msg, type="INFO"):
     reset = "\033[0m"
     print(f"[{timestamp}] {color}{type:7}{reset} | {msg}", flush=True)
 
+class Res:
+    def __init__(self, data=None):
+        self.data = data or []
+
 # 2. SUPABASE & AI CLIENT
 class SupabaseEngine:
     def __init__(self):
@@ -50,22 +54,23 @@ class SupabaseEngine:
         return TableProxy(self, table)
 
     def ai_classify(self, username, bio, followers, category):
-        if not self.groq_token: return True # Fallback if no token
+        if not self.groq_token: return True
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
+            # Using Llama 3.3 70B for high intelligence as requested
             prompt = f"Analyze TikTok profile: @{username}. Bio: {bio}. Followers: {followers}. Target Category: {category}. Is this an Indonesian SME/Seller selling products or services in the {category} category? Answer ONLY 'YES' or 'NO'."
             data = {
                 "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1
             }
-            resp = requests.post(url, headers=headers, json=data, timeout=10).json()
+            resp = requests.post(url, headers=headers, json=data, timeout=12).json()
             answer = resp['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
         except Exception as e:
             log(f"AI Error: {e}", "WARNING")
-            return True # Assume true on error to not miss data
+            return True
 
 class TableProxy:
     def __init__(self, engine, table):
@@ -100,10 +105,8 @@ class TableProxy:
                 desc = cur.description
                 data = [dict(zip([d[0] for d in desc], r)) for r in cur.fetchall()]
                 cur.close(); conn.close()
-                class Res: def __init__(self, d): self.data = d
                 return Res(data)
             except Exception: pass
-        class Res: def __init__(self): self.data = []
         return Res()
 
     def upsert(self, data, on_conflict='username'):
@@ -221,7 +224,7 @@ async def main_loop():
             try:
                 await page.goto(f"https://www.tiktok.com/search/user?q={search_q}", timeout=60000)
                 await asyncio.sleep(5)
-                for _ in range(10): # Deep scroll
+                for _ in range(10):
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     await asyncio.sleep(1)
 
@@ -229,13 +232,13 @@ async def main_loop():
                 users = list(set([re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]))
                 await page.close()
 
-                for u in users[:40]: # Aggressive capture
+                for u in users[:40]:
                     await engine.extract_profile(context, u, cat)
-                    await asyncio.sleep(random.uniform(1, 3))
+                    await asyncio.sleep(random.uniform(0.5, 1.5))
             except Exception:
                 if not page.is_closed(): await page.close()
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
         await browser.close()
 
 if __name__ == "__main__":
