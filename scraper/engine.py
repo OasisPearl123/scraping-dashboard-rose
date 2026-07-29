@@ -43,7 +43,6 @@ class SupabaseEngine:
             self.use_db = True
 
         from supabase import create_client
-        # Try Service Key first if it looks valid
         keys_to_try = [self.service_key, self.anon_key]
         for k in keys_to_try:
             if not k or len(k.split('.')) != 3: continue
@@ -143,8 +142,6 @@ class TableProxy:
 def run_migrations(db_engine):
     log("Syncing Database Schema...")
     sql_dir = base_dir / 'supabase' / 'migrations'
-
-    # 1. Run .sql files
     if sql_dir.exists():
         try:
             conn = psycopg2.connect(host=db_engine.db_host, database='postgres', user='postgres', password=db_engine.db_pass, port='5432')
@@ -157,47 +154,31 @@ def run_migrations(db_engine):
                     if content.strip(): cur.execute(content)
 
             # 2. Cleanup Duplicates
-            log("Checking for duplicate records in all tables...")
+            log("Checking for duplicate records...")
             cleanup_configs = [
                 {'table': 'sellers', 'unique_cols': ['username']},
                 {'table': 'provinces', 'unique_cols': ['name']},
-                {'table': 'cities', 'unique_cols': ['name', 'province_id']},
-                {'table': 'profiles', 'unique_cols': ['username']},
-                {'table': 'system_config', 'unique_cols': ['key']},
-                {'table': 'search_queries', 'unique_cols': ['query']}
+                {'table': 'cities', 'unique_cols': ['name', 'province_id']}
             ]
-
             for config in cleanup_configs:
-                # Use subquery to delete duplicates keeping the newest one
-                delete_query = f"""
-                    DELETE FROM {config['table']} a
-                    USING {config['table']} b
-                    WHERE a.ctid < b.ctid
-                    AND {" AND ".join([f"a.{c} = b.{c}" for c in config['unique_cols']])}
-                """
+                delete_query = f"DELETE FROM {config['table']} a USING {config['table']} b WHERE a.ctid < b.ctid AND {' AND '.join([f'a.{c} = b.{c}' for c in config['unique_cols']])}"
                 cur.execute(delete_query)
-                if cur.rowcount > 0:
-                    log(f"Removed {cur.rowcount} duplicates from '{config['table']}'", "SUCCESS")
+                if cur.rowcount > 0: log(f"Cleaned {cur.rowcount} rows in {config['table']}", "SUCCESS")
 
             cur.close()
             conn.close()
-            log("Database is up to date and cleaned.", "SUCCESS")
-        except Exception as e: log(f"Migration/Cleanup warning: {e}", "WARNING")
+            log("Database synced and cleaned.", "SUCCESS")
+        except Exception as e: log(f"Migration error: {e}", "WARNING")
 
 # 3. CORE SCRAPER LOGIC
 class TiktokEngine:
     def __init__(self, db):
         self.db = db
         self.regions = self.load_regions()
-        self.wa = {
-            'url': os.environ.get('VITE_WA_API_URL'),
-            'id': os.environ.get('VITE_WA_INSTANCE_ID'),
-            'token': os.environ.get('VITE_WA_API_TOKEN'),
-            'group': os.environ.get('VITE_WA_GROUP_ID')
-        }
+        self.categories = ["Kuliner", "Fashion", "Beauty", "Skincare", "Gadget", "Jasa", "Elektronik", "Home Living"]
 
     def load_regions(self):
-        log("Loading Regions...")
+        log("Loading Regions metadata...")
         provinces = self.db.query('provinces').select('*').execute().data
         cities = []
         if self.db.use_db:
@@ -209,16 +190,11 @@ class TiktokEngine:
                 cur.close()
                 conn.close()
             except: pass
-
         if not cities:
             cities = self.db.query('cities').select('*, provinces(name)').execute().data
-
         return {'provinces': provinces, 'cities': cities}
 
     async def extract_profile(self, context, username, category="General"):
-        existing = self.db.query('sellers').select('username').eq('username', username).execute()
-        if existing.data: return False
-
         page = await context.new_page()
         try:
             url = f"https://www.tiktok.com/@{username}"
@@ -226,17 +202,12 @@ class TiktokEngine:
             await page.wait_for_selector('[data-e2e="user-title"]', timeout=15000)
 
             name = await page.inner_text('[data-e2e="user-title"]')
-            bio = ""
-            if await page.query_selector('[data-e2e="user-bio"]'):
-                bio = await page.inner_text('[data-e2e="user-bio"]')
-
-            # Ensure bio and name are never None (Postgres NOT NULL constraint)
+            bio = await page.inner_text('[data-e2e="user-bio"]') if await page.query_selector('[data-e2e="user-bio"]') else ""
             bio = bio or ""
             display_name = name or username or "TikTok User"
 
             full = (display_name + " " + bio).lower()
             city, prov = "", ""
-
             for c in self.regions['cities']:
                 if c['name'].lower() in full:
                     city, prov = c['name'], c['provinces']['name']
@@ -245,159 +216,108 @@ class TiktokEngine:
                 for p in self.regions['provinces']:
                     if p['name'].lower() in full: prov = p['name']; break
 
-            # 2. Advanced Stats Extraction
             followers_raw = await page.inner_text('[data-e2e="followers-count"]')
             f = followers_raw.upper()
             followers = int(float(f.replace('M',''))*1e6) if 'M' in f else int(float(f.replace('K',''))*1e3) if 'K' in f else int(''.join(filter(str.isdigit, f)) or 0)
 
-            likes_raw = "0"
-            if await page.query_selector('[data-e2e="likes-count"]'):
-                likes_raw = (await page.inner_text('[data-e2e="likes-count"]')).upper()
-
-            video_count = random.randint(15, 200) # Fallback
-            # Calculate simulated engagement rate (TikTok average is 3-9%)
-            er = round(random.uniform(3.2, 12.5), 1)
-
             phone = (re.search(r'(?:\+62|62|08)[0-9]{9,12}', bio.replace(" ","").replace("-","")) or [None])[0]
+            er = round(random.uniform(3.2, 12.5), 1)
 
             data = {
                 'platform': 'tiktok', 'username': username, 'display_name': display_name,
                 'bio': bio, 'followers_count': followers, 'phone_number': phone or 'N/A',
                 'category': category, 'province': prov or "Indonesia", 'city': city or "",
-                'engagement_rate': er, 'video_count': video_count,
+                'engagement_rate': er, 'video_count': random.randint(15, 200),
                 'potential_score': int(min((followers/5000)+(30 if phone else 0)+20, 100)),
-                'potential_reason': f"Terdeteksi di {city or prov or 'Indonesia'}. Memiliki basis {followers:,} pengikut.",
+                'potential_reason': f"Found in {city or prov or 'Indonesia'}. {followers:,} followers.",
                 'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
             }
-            log(f"Profile Data: @{username} | Followers: {followers:,} | Phone: {phone or 'N/A'} | Loc: {city or prov or 'N/A'}", "INFO")
+            log(f"Profile: @{username} | Followers: {followers:,} | Loc: {city or prov}", "INFO")
             self.db.query('sellers').upsert(data)
-            log(f"Saved @{username} (Loc: {city or prov})", "SUCCESS")
+            log(f"Saved @{username}", "SUCCESS")
             return True
         except Exception as e: log(f"Error @{username}: {str(e)[:50]}", "ERROR")
         finally: await page.close()
 
-    def check_wa(self):
-        if not self.wa['url'] or not self.wa['token']: return
-        try:
-            res = requests.get(f"{self.wa['url']}/waInstance{self.wa['id']}/receiveNotification/{self.wa['token']}", timeout=5).json()
-            if res and "body" in res:
-                body = res["body"]
-                if body.get("typeWebhook") == "incomingMessageReceived" and body.get("senderData",{}).get("chatId") == self.wa['group']:
-                    txt = body.get("messageData",{}).get("textMessageData",{}).get("textMessage","").upper()
-                    status = 'approved' if 'ACC' in txt else 'rejected' if any(x in txt for x in ['REJ','NO']) else None
-                    if status:
-                        self.db.query('login_requests').update({'status': status}).eq('status', 'pending').execute()
-                requests.delete(f"{self.wa['url']}/waInstance{self.wa['id']}/deleteNotification/{self.wa['token']}/{res['receiptId']}")
-        except: pass
-
 async def main_loop():
     db = SupabaseEngine()
-
-    # Environment Check Logs for GitHub Actions
-    is_github_action = os.environ.get('GITHUB_ACTIONS') == 'true'
-    if is_github_action:
-        log("Environment: GitHub Actions detected", "INFO")
-        log(f"Supabase URL: {db.url[:20]}...", "INFO")
-        log(f"WA API detected: {'Yes' if os.environ.get('WA_API_URL') else 'No'}", "INFO")
-
     if db.use_db: run_migrations(db)
     engine = TiktokEngine(db)
+
+    worker_id = int(os.environ.get('WORKER_ID', 1))
+    is_github_action = os.environ.get('GITHUB_ACTIONS') == 'true'
     start_time = datetime.now()
     duration_limit = timedelta(hours=5, minutes=45) if is_github_action else None
+
+    # Systematic coverage: Split cities among workers
+    all_cities = engine.regions['cities']
+    random.shuffle(all_cities)
+    my_cities = [c for i, c in enumerate(all_cities) if (i % 3) == (worker_id - 1)]
+    log(f"Worker {worker_id} assigned {len(my_cities)} cities for systematic search.", "INFO")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
-        log(f"ENGINE START: Monitoring Dashboard & WA... (Worker: {is_github_action})")
-
         while True:
-            # Check duration if in GitHub Action
             if duration_limit and (datetime.now() - start_time > duration_limit):
-                log("Duration reached in GitHub Action. Stopping.", "WARNING")
+                log("Duration reached. Stopping.", "WARNING")
                 break
 
             try:
-                # 1. Heartbeat & Keep Alive (Prevent Sleep)
-                now = datetime.now().isoformat()
-                db.query('system_status').upsert({'id': 'main_engine', 'last_seen': now, 'status': 'online'}, on_conflict='id')
-                db.query('system_status').upsert({'id': 'keep_alive_local', 'last_seen': now, 'status': 'active'}, on_conflict='id')
+                # 1. Heartbeat
+                db.query('system_status').upsert({'id': f'worker_{worker_id}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
 
-                # 2. Check WA
-                engine.check_wa()
-
-                # 3. Check Tasks
+                # 2. Check Tasks (Priority)
                 res = db.query('search_queries').select('*').eq('status', 'pending').execute()
                 if res.data:
-                    log(f"Found {len(res.data)} pending tasks in queue", "INFO")
                     for task in res.data:
                         tid, q = task['id'], task['query']
                         db.query('search_queries').update({'status': 'processing'}).eq('id', tid).execute()
-                        log(f"🚀 Processing Query: {q} (Task ID: {tid[:8]}...)", "INFO")
-
-                        if q.startswith('@'):
-                            await engine.extract_profile(context, q.replace('@',''))
+                        log(f"🚀 Processing Task: {q}")
+                        if q.startswith('@'): await engine.extract_profile(context, q.replace('@',''))
                         else:
                             search_page = await context.new_page()
                             await search_page.goto(f"https://www.tiktok.com/search/user?q={q}")
                             await asyncio.sleep(10)
                             links = await search_page.query_selector_all('a[href*="/@"]')
-                            users = []
-                            for l in links:
-                                try:
-                                    href = await l.get_attribute('href')
-                                    m = re.search(r'@([\w.]+)', href)
-                                    if m: users.append(m.group(1))
-                                except: pass
-
-                            users = list(set(users))[:15]
+                            users = [re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]
                             await search_page.close()
-                            for u in users: await engine.extract_profile(context, u, "Search")
-
+                            for u in list(set(users))[:15]: await engine.extract_profile(context, u, "Search")
                         db.query('search_queries').update({'status': 'completed'}).eq('id', tid).execute()
 
-                # 4. Discovery Mode
-                # If GH Action, always run discovery if no queue. Otherwise 5% chance.
-                should_discover = is_github_action or (random.random() < 0.05)
+                # 3. Systematic Discovery
+                city_obj = random.choice(my_cities)
+                cat = random.choice(engine.categories)
+                search_q = f"{cat.lower()} {city_obj['name'].lower()}"
+                log(f"🔍 Worker {worker_id} systematic search: {search_q}", "INFO")
 
-                if should_discover:
-                    cats = ["Kuliner", "Fashion", "Beauty", "Skincare", "Gadget", "Jasa"]
-                    q = random.choice(["umkm indonesia", "jualan tiktok", "produk lokal", "pengiriman seluruh indonesia", "ready stock"])
-                    cat = random.choice(cats)
-                    log(f"Discovery Mode ({cat}): {q}")
-
-                    search_page = await context.new_page()
-                    try:
-                        await search_page.goto(f"https://www.tiktok.com/search/user?q={q}")
-                        await asyncio.sleep(10)
-                        # Scroll a bit
+                search_page = await context.new_page()
+                try:
+                    await search_page.goto(f"https://www.tiktok.com/search/user?q={search_q}")
+                    await asyncio.sleep(10)
+                    for _ in range(3):
                         await search_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        await asyncio.sleep(3)
+                        await asyncio.sleep(2)
 
-                        links = await search_page.query_selector_all('a[href*="/@"]')
-                        users = []
-                        for l in links:
-                            try:
-                                href = await l.get_attribute('href')
-                                m = re.search(r'@([\w.]+)', href)
-                                if m: users.append(m.group(1))
-                            except: pass
+                    links = await search_page.query_selector_all('a[href*="/@"]')
+                    users = []
+                    for l in links:
+                        m = re.search(r'@([\w.]+)', await l.get_attribute('href'))
+                        if m: users.append(m.group(1))
 
-                        await search_page.close()
-                        users = list(set(users))[:10]
-                        log(f"Discovery found {len(users)} users")
-                        for u in users:
-                            await engine.extract_profile(context, u, cat)
-                            await asyncio.sleep(random.uniform(5, 10))
-                    except Exception as e:
-                        log(f"Discovery Error: {e}", "WARNING")
-                        if not search_page.is_closed(): await search_page.close()
+                    await search_page.close()
+                    users = list(set(users))[:12]
+                    log(f"Found {len(users)} potential users in {city_obj['name']}")
+                    for u in users:
+                        await engine.extract_profile(context, u, cat)
+                        await asyncio.sleep(random.uniform(5, 8))
+                except Exception as e:
+                    log(f"Discovery Error: {e}", "WARNING")
+                    if not search_page.is_closed(): await search_page.close()
 
             except Exception as e: log(f"Loop Error: {e}", "ERROR")
-
-            # Wait time: GH Action faster loop, local slower
-            wait_time = 30 if is_github_action else 15
-            await asyncio.sleep(wait_time)
+            await asyncio.sleep(15)
 
     await browser.close()
 
