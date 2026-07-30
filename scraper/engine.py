@@ -53,15 +53,33 @@ class SupabaseEngine:
     def query(self, table):
         return TableProxy(self, table)
 
+    def ai_suggest_queries(self, city, category):
+        if not self.groq_token: return []
+        try:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
+            prompt = f"Berikan 5 kata kunci pencarian TikTok yang berbeda untuk mencari seller/UMKM kategori {category} di {city}, Indonesia. Gunakan bahasa gaul/populer TikTok. Berikan dalam format list JSON string array saja."
+            data = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.7
+            }
+            resp = requests.post(url, headers=headers, json=data, timeout=15).json()
+            content = resp['choices'][0]['message']['content']
+            match = re.search(r'\[.*\]', content, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+            return []
+        except Exception as e:
+            log(f"AI Suggestion Error: {e}", "WARNING")
+            return []
+
     def ai_classify(self, username, bio, followers, category):
-        # 1. HEURISTIC: Strict non-latin script rejection
         clean_bio = (bio or "").strip()
         if clean_bio:
-            # Allow only Basic Latin, numbers, and very common punctuation.
-            # This rejects Greek, Arabic, Russian, Chinese, etc.
             foreign_script = re.compile(r'[^\x00-\x7F\s\d.,!?;:()\'"%-]')
             non_latin_count = len(foreign_script.findall(clean_bio))
-            if non_latin_count > (len(clean_bio) * 0.05): # Max 5% tolerance for emojis
+            if non_latin_count > (len(clean_bio) * 0.05):
                 log(f"Strict Language Reject @{username}: Foreign script detected", "WARNING")
                 return False
 
@@ -69,26 +87,18 @@ class SupabaseEngine:
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
-
-            # Ultra-strict AI instructions for 100% Indonesian compliance
             prompt = f"""
             SYSTEM: Professional Indonesian Content Auditor.
             PROFILE: @{username}
             BIO: "{bio}"
             EXPECTED CATEGORY: {category}
-
             CRITICAL RULES:
-            1. FULL BAHASA INDONESIA: The bio MUST be written in Indonesian.
-               - REJECT if bio is primarily English.
-               - REJECT if bio has Greek, Arabic, or other foreign languages.
-               - ACCEPT only Indonesian (including local slang/Bahasa Gaul).
+            1. FULL BAHASA INDONESIA: Bio MUST be in Indonesian. No English/Greek/Arabic.
             2. INDONESIAN SME: Account MUST be a local Indonesian seller.
             3. CATEGORY MATCH: Must be selling products in {category}.
-
-            Is this profile 100% Indonesian and a valid local business?
-            Answer ONLY 'YES' or 'NO'.
+            4. FOLLOWER LIMIT: Must be under 100,000.
+            Is this profile valid? Answer ONLY 'YES' or 'NO'.
             """
-
             data = {
                 "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "user", "content": prompt}],
@@ -96,14 +106,8 @@ class SupabaseEngine:
             }
             resp = requests.post(url, headers=headers, json=data, timeout=15).json()
             answer = resp['choices'][0]['message']['content'].strip().upper()
-
-            is_valid = "YES" in answer and "NO" not in answer
-            if not is_valid:
-                log(f"AI Reject @{username}: Does not meet strict Indonesian SME criteria", "WARNING")
-            return is_valid
-        except Exception as e:
-            log(f"AI Logic Error: {e}", "WARNING")
-            return True
+            return "YES" in answer
+        except Exception: return True
 
 class TableProxy:
     def __init__(self, engine, table):
@@ -184,17 +188,12 @@ class TiktokEngine:
 
             name = await page.inner_text('[data-e2e="user-title"]')
             bio = await page.inner_text('[data-e2e="user-bio"]') if await page.query_selector('[data-e2e="user-bio"]') else ""
-
             f_raw = await page.inner_text('[data-e2e="followers-count"]')
             f = f_raw.upper()
             followers = int(float(f.replace('M',''))*1e6) if 'M' in f else int(float(f.replace('K',''))*1e3) if 'K' in f else int(''.join(filter(str.isdigit, f)) or 0)
 
-            if followers > 100000:
-                log(f"Skipping @{username}: {followers} followers (too big)", "WARNING")
-                return False
-
-            if not self.db.ai_classify(username, bio, followers, category):
-                return False
+            if followers > 100000: return False
+            if not self.db.ai_classify(username, bio, followers, category): return False
 
             full = (name + " " + bio).lower()
             city, prov = "", ""
@@ -221,11 +220,9 @@ class TiktokEngine:
 async def main_loop():
     db = SupabaseEngine()
     engine = TiktokEngine(db)
-
     all_cities = engine.regions['cities']
     worker_index = int(os.environ.get('WORKER_INDEX', 0))
     total_workers = 15
-
     chunk_size = len(all_cities) // total_workers
     start = worker_index * chunk_size
     end = start + chunk_size if worker_index < total_workers - 1 else len(all_cities)
@@ -238,35 +235,36 @@ async def main_loop():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-
         log(f"ENGINE START: Worker {worker_index+1}/15 | Cities: {len(my_cities)}")
 
         while True:
             if limit and (datetime.now() - start_time > limit): break
-
             city = random.choice(my_cities)
             cat = random.choice(engine.categories)
-            search_q = f"{cat.lower()} {city['name'].lower()}"
-            log(f"🔍 Searching: {search_q}")
 
-            page = await context.new_page()
-            try:
-                await page.goto(f"https://www.tiktok.com/search/user?q={search_q}", timeout=60000)
-                await asyncio.sleep(5)
-                for _ in range(10):
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await asyncio.sleep(1)
+            # Use AI for search queries if standard search is exhausted
+            search_queries = [f"{cat.lower()} {city['name'].lower()}"]
+            if random.random() > 0.5:
+                log(f"🤖 Requesting AI Suggested Queries for {city['name']}...")
+                search_queries += db.ai_suggest_queries(city['name'], cat)
 
-                links = await page.query_selector_all('a[href*="/@"]')
-                users = list(set([re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]))
-                await page.close()
-
-                for u in users[:40]:
-                    await engine.extract_profile(context, u, cat)
-                    await asyncio.sleep(random.uniform(0.5, 1.5))
-            except Exception:
-                if not page.is_closed(): await page.close()
-
+            for search_q in search_queries:
+                log(f"🔍 Searching: {search_q}")
+                page = await context.new_page()
+                try:
+                    await page.goto(f"https://www.tiktok.com/search/user?q={search_q}", timeout=60000)
+                    await asyncio.sleep(5)
+                    for _ in range(15):
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await asyncio.sleep(1)
+                    links = await page.query_selector_all('a[href*="/@"]')
+                    users = list(set([re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]))
+                    await page.close()
+                    for u in users[:50]:
+                        await engine.extract_profile(context, u, cat)
+                        await asyncio.sleep(random.uniform(0.3, 0.8))
+                except Exception:
+                    if not page.is_closed(): await page.close()
             await asyncio.sleep(2)
         await browser.close()
 
