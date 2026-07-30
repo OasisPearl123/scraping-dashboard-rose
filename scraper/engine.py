@@ -60,7 +60,7 @@ class SupabaseEngine:
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
-            prompt = f"Generate 15 unique TikTok search keywords to find local Indonesian sellers in {city} for the {category} category. Format: JSON array of strings only."
+            prompt = f"Generate 15 unique TikTok search keywords to find local Indonesian sellers in {city} for the {category} category. Use local terms. Format: JSON array of strings only."
             data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.8}
             resp = requests.post(url, headers=headers, json=data, timeout=20).json()
             content = resp['choices'][0]['message']['content']
@@ -177,16 +177,29 @@ class TiktokEngine:
 async def main_loop():
     db = SupabaseEngine()
     engine = TiktokEngine(db)
-    all_cities = engine.regions['cities']
     worker_id = int(os.environ.get('WORKER_INDEX', 0))
-    total_workers = 15
-    chunk = len(all_cities) // total_workers
-    my_cities = all_cities[worker_id*chunk : (worker_id+1)*chunk if worker_id < 14 else len(all_cities)]
+
+    # FOCUS REGIONS: Jakarta Selatan, Jakarta Timur, Jakarta Pusat, D.I. Yogyakarta
+    focus_cities = ["Jakarta Selatan", "Jakarta Timur", "Jakarta Pusat", "Yogyakarta"]
+    all_cities = engine.regions['cities']
+
+    # Priority cities first
+    priority_cities = [c for c in all_cities if any(fc.lower() in c['name'].lower() for fc in focus_cities)]
+    other_cities = [c for c in all_cities if not any(fc.lower() in c['name'].lower() for fc in focus_cities)]
+
+    # Redistribute among 15 workers
+    if worker_id < 8: # First 8 workers focus purely on Priority Regions
+        chunk = len(priority_cities) // 8
+        my_cities = priority_cities[worker_id*chunk : (worker_id+1)*chunk if worker_id < 7 else len(priority_cities)]
+    else: # Next 7 workers focus on the rest of Indonesia
+        rel_id = worker_id - 8
+        chunk = len(other_cities) // 7
+        my_cities = other_cities[rel_id*chunk : (rel_id+1)*chunk if rel_id < 6 else len(other_cities)]
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        log(f"WORKER {worker_id+1} STARTED")
+        log(f"WORKER {worker_id+1} STARTED | Target Cities: {len(my_cities)}")
 
         while True:
             # Update status
@@ -196,10 +209,8 @@ async def main_loop():
             city = random.choice(my_cities)
             cat = random.choice(engine.categories)
 
-            # Coordination
             q = f"{cat.lower()} {city['name'].lower()}"
             try:
-                # Try to get or create task
                 if db.use_db:
                     conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
                     cur = conn.cursor()
@@ -212,23 +223,24 @@ async def main_loop():
                     conn.commit(); cur.close(); conn.close()
             except Exception: pass
 
-            log(f"🔍 Searching: {q}")
+            log(f"🔍 Searching: {q} in {city['name']}")
             page = await context.new_page()
             try:
                 await page.goto(f"https://www.tiktok.com/search/user?q={q}", timeout=60000)
                 await asyncio.sleep(5)
-                for _ in range(15): await page.evaluate("window.scrollTo(0, document.body.scrollHeight)"); await asyncio.sleep(1)
+                # Deep scroll for 2000+ data requirement
+                for _ in range(25): await page.evaluate("window.scrollTo(0, document.body.scrollHeight)"); await asyncio.sleep(1)
                 links = await page.query_selector_all('a[href*="/@"]')
                 users = list(set([re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]))
                 await page.close()
-                for u in users[:50]: await engine.extract_profile(context, u, cat); await asyncio.sleep(random.uniform(0.2, 0.4))
+                for u in users: await engine.extract_profile(context, u, cat); await asyncio.sleep(random.uniform(0.1, 0.3))
 
                 if db.use_db:
                     conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
                     cur = conn.cursor(); cur.execute("UPDATE search_queries SET status='completed' WHERE query=%s", (q,)); conn.commit(); cur.close(); conn.close()
             except Exception:
                 if not page.is_closed(): await page.close()
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
         await browser.close()
 
 if __name__ == "__main__":
