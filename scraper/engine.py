@@ -45,66 +45,60 @@ class SupabaseEngine:
         try:
             from supabase import create_client
             self.client = create_client(self.url, self.key)
-            self.client.table('system_status').select('id').limit(1).execute()
-            log("Supabase REST API Active", "SUCCESS")
+            log("Supabase Connection Initialized", "SUCCESS")
         except Exception:
             self.client = None
 
     def query(self, table):
         return TableProxy(self, table)
 
-    def ai_suggest_queries(self, city, category):
+    def ai_generate_keywords(self, city, category):
         if not self.groq_token: return []
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
-            prompt = f"Berikan 5 kata kunci pencarian TikTok yang berbeda untuk mencari seller/UMKM kategori {category} di {city}, Indonesia. Gunakan bahasa gaul/populer TikTok. Berikan dalam format list JSON string array saja."
+            prompt = f"""Generate 20 unique and highly specific TikTok search keywords to find local Indonesian sellers in {city} for the {category} category.
+            Mix standard Indonesian, local slang (bahasa gaul), and shopping terms (e.g., 'olshop', 'ready stock', 'cod').
+            Format: JSON array of strings only."""
+
             data = {
                 "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7
+                "temperature": 0.8
             }
-            resp = requests.post(url, headers=headers, json=data, timeout=15).json()
+            resp = requests.post(url, headers=headers, json=data, timeout=20).json()
             content = resp['choices'][0]['message']['content']
             match = re.search(r'\[.*\]', content, re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
-            return []
+            return json.loads(match.group(0)) if match else []
         except Exception as e:
-            log(f"AI Suggestion Error: {e}", "WARNING")
+            log(f"AI Keyword Error: {e}", "WARNING")
             return []
 
     def ai_classify(self, username, bio, followers, category):
+        # Pre-filter for foreign scripts
         clean_bio = (bio or "").strip()
         if clean_bio:
             foreign_script = re.compile(r'[^\x00-\x7F\s\d.,!?;:()\'"%-]')
-            non_latin_count = len(foreign_script.findall(clean_bio))
-            if non_latin_count > (len(clean_bio) * 0.05):
-                log(f"Strict Language Reject @{username}: Foreign script detected", "WARNING")
+            if len(foreign_script.findall(clean_bio)) > (len(clean_bio) * 0.05):
                 return False
 
         if not self.groq_token: return True
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
-            prompt = f"""
-            SYSTEM: Professional Indonesian Content Auditor.
-            PROFILE: @{username}
-            BIO: "{bio}"
-            EXPECTED CATEGORY: {category}
-            CRITICAL RULES:
-            1. FULL BAHASA INDONESIA: Bio MUST be in Indonesian. No English/Greek/Arabic.
-            2. INDONESIAN SME: Account MUST be a local Indonesian seller.
-            3. CATEGORY MATCH: Must be selling products in {category}.
-            4. FOLLOWER LIMIT: Must be under 100,000.
-            Is this profile valid? Answer ONLY 'YES' or 'NO'.
-            """
+            prompt = f"""SYSTEM: Strict Indonesian SME Auditor.
+            Evaluate @{username} | Bio: "{bio}" | Category: {category}
+            Rules:
+            1. MUST be 100% Indonesian language bio (Slang OK).
+            2. MUST be an Indonesian local seller/SME.
+            3. MUST be in {category} category.
+            4. MUST have < 100,000 followers.
+            Is this profile VALID? Answer ONLY 'YES' or 'NO'."""
+
             data = {
-                "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.0
+                "model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.0
             }
-            resp = requests.post(url, headers=headers, json=data, timeout=15).json()
+            resp = requests.post(url, headers=headers, json=data, timeout=12).json()
             answer = resp['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
         except Exception: return True
@@ -131,36 +125,11 @@ class TableProxy:
                 for k, v in self._filters.items(): q = q.eq(k, v)
                 return q.execute()
             except Exception: pass
-        if self.engine.use_db:
-            try:
-                conn = psycopg2.connect(host=self.engine.db_host, database='postgres', user='postgres', password=self.engine.db_pass, port='5432')
-                cur = conn.cursor()
-                where = ""
-                if self._filters:
-                    where = " WHERE " + " AND ".join([f"{k} = %s" for k in self._filters.keys()])
-                cur.execute(f"SELECT {self._columns} FROM {self.table}{where}", list(self._filters.values()))
-                desc = cur.description
-                data = [dict(zip([d[0] for d in desc], r)) for r in cur.fetchall()]
-                cur.close(); conn.close()
-                return Res(data)
-            except Exception: pass
         return Res()
 
     def upsert(self, data, on_conflict='username'):
         if self.engine.client:
             try: return self.engine.client.table(self.table).upsert(data, on_conflict=on_conflict).execute()
-            except Exception: pass
-        if self.engine.use_db:
-            try:
-                conn = psycopg2.connect(host=self.engine.db_host, database='postgres', user='postgres', password=self.engine.db_pass, port='5432')
-                conn.autocommit = True
-                cur = conn.cursor()
-                cols = list(data.keys())
-                query = f"INSERT INTO {self.table} ({', '.join(cols)}) VALUES ({', '.join(['%s']*len(cols))}) ON CONFLICT ({on_conflict}) DO UPDATE SET {', '.join([f'{c}=EXCLUDED.{c}' for c in cols if c != on_conflict])} RETURNING id"
-                cur.execute(query, [data[c] for c in cols])
-                res = cur.fetchone()[0]
-                cur.close(); conn.close()
-                return res
             except Exception: pass
         return None
 
@@ -172,19 +141,26 @@ class TiktokEngine:
         self.categories = ["Kuliner", "Fashion", "Beauty", "Skincare", "Gadget", "Elektronik", "Home Living", "Jasa"]
 
     def load_regions(self):
-        provinces = self.db.query('provinces').select('*').execute().data
-        cities = self.db.query('cities').select('*, provinces(name)').execute().data
+        # Direct DB connection for speed and complex queries
+        conn = psycopg2.connect(host=self.db.db_host, database='postgres', user='postgres', password=self.db.db_pass, port='5432')
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM provinces")
+        provinces = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+        cur.execute("SELECT c.*, p.name as province_name FROM cities c JOIN provinces p ON c.province_id = p.id")
+        cities = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
+        cur.close(); conn.close()
         return {'provinces': provinces, 'cities': cities}
 
     async def extract_profile(self, context, username, category):
+        # Check cache first (username is unique)
         existing = self.db.query('sellers').select('username').eq('username', username).execute()
         if existing.data: return False
 
         page = await context.new_page()
         try:
             url = f"https://www.tiktok.com/@{username}"
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_selector('[data-e2e="user-title"]', timeout=10000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+            await page.wait_for_selector('[data-e2e="user-title"]', timeout=8000)
 
             name = await page.inner_text('[data-e2e="user-title"]')
             bio = await page.inner_text('[data-e2e="user-bio"]') if await page.query_selector('[data-e2e="user-bio"]') else ""
@@ -198,7 +174,7 @@ class TiktokEngine:
             full = (name + " " + bio).lower()
             city, prov = "", ""
             for c in self.regions['cities']:
-                if c['name'].lower() in full: city, prov = c['name'], c['provinces']['name']; break
+                if c['name'].lower() in full: city, prov = c['name'], c['province_name']; break
             if not city:
                 for p in self.regions['provinces']:
                     if p['name'].lower() in full: prov = p['name']; break
@@ -208,11 +184,11 @@ class TiktokEngine:
                 'bio': bio, 'followers_count': followers, 'phone_number': (re.search(r'(?:\+62|62|08)[0-9]{9,12}', bio.replace(" ","").replace("-","")) or ["N/A"])[0],
                 'category': category, 'province': prov or "Indonesia", 'city': city or "",
                 'potential_score': int(min((followers/5000)+50, 100)),
-                'potential_reason': f"Verified SME in {category}. Indonesian profile.",
+                'potential_reason': f"AI Verified SME in {category}. Indonesian profile.",
                 'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
             }
             self.db.query('sellers').upsert(data)
-            log(f"Saved SME @{username} in {category}", "SUCCESS")
+            log(f"Saved @{username} in {city or 'Unknown City'}", "SUCCESS")
             return True
         except Exception: return False
         finally: await page.close()
@@ -221,50 +197,82 @@ async def main_loop():
     db = SupabaseEngine()
     engine = TiktokEngine(db)
     all_cities = engine.regions['cities']
-    worker_index = int(os.environ.get('WORKER_INDEX', 0))
+    worker_id = int(os.environ.get('WORKER_INDEX', 0))
     total_workers = 15
-    chunk_size = len(all_cities) // total_workers
-    start = worker_index * chunk_size
-    end = start + chunk_size if worker_index < total_workers - 1 else len(all_cities)
-    my_cities = all_cities[start:end]
 
-    is_gh = os.environ.get('GITHUB_ACTIONS') == 'true'
-    start_time = datetime.now()
-    limit = timedelta(hours=5) if is_gh else None
+    # Partition cities
+    chunk = len(all_cities) // total_workers
+    my_cities = all_cities[worker_id*chunk : (worker_id+1)*chunk if worker_id < 14 else len(all_cities)]
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        log(f"ENGINE START: Worker {worker_index+1}/15 | Cities: {len(my_cities)}")
+        log(f"WORKER {worker_id+1} STARTED | Cities Assigned: {len(my_cities)}")
 
         while True:
-            if limit and (datetime.now() - start_time > limit): break
+            # Update system status
+            try:
+                conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
+                cur = conn.cursor()
+                # Update individual worker status
+                cur.execute("INSERT INTO system_status (id, last_seen, status) VALUES ('worker_'||%s, NOW(), 'online') ON CONFLICT (id) DO UPDATE SET last_seen=NOW(), status='online'", (worker_id+1,))
+                # Update main engine status for UI
+                cur.execute("INSERT INTO system_status (id, last_seen, status) VALUES ('main_engine', NOW(), 'online') ON CONFLICT (id) DO UPDATE SET last_seen=NOW(), status='online'")
+                conn.commit(); cur.close(); conn.close()
+            except Exception: pass
+
             city = random.choice(my_cities)
             cat = random.choice(engine.categories)
 
-            # Use AI for search queries if standard search is exhausted
-            search_queries = [f"{cat.lower()} {city['name'].lower()}"]
-            if random.random() > 0.5:
-                log(f"🤖 Requesting AI Suggested Queries for {city['name']}...")
-                search_queries += db.ai_suggest_queries(city['name'], cat)
+            # Coordination: Use search_queries table to avoid overlap
+            q = f"{cat.lower()} {city['name'].lower()}"
 
-            for search_q in search_queries:
-                log(f"🔍 Searching: {search_q}")
-                page = await context.new_page()
-                try:
-                    await page.goto(f"https://www.tiktok.com/search/user?q={search_q}", timeout=60000)
-                    await asyncio.sleep(5)
-                    for _ in range(15):
-                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        await asyncio.sleep(1)
-                    links = await page.query_selector_all('a[href*="/@"]')
-                    users = list(set([re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]))
-                    await page.close()
-                    for u in users[:50]:
-                        await engine.extract_profile(context, u, cat)
-                        await asyncio.sleep(random.uniform(0.3, 0.8))
-                except Exception:
-                    if not page.is_closed(): await page.close()
+            # Attempt to claim or create task
+            try:
+                conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
+                cur = conn.cursor()
+                # Get a pending query or generate one
+                cur.execute("SELECT query FROM search_queries WHERE status='pending' LIMIT 1 FOR UPDATE SKIP LOCKED")
+                row = cur.fetchone()
+                if row:
+                    q = row[0]
+                    cur.execute("UPDATE search_queries SET status='processing' WHERE query=%s", (q,))
+                else:
+                    # No pending queries? Generate more with AI for this worker's cities
+                    ai_qs = db.ai_generate_keywords(city['name'], cat)
+                    for aq in ai_qs:
+                        cur.execute("INSERT INTO search_queries (query, status) VALUES (%s, 'pending') ON CONFLICT DO NOTHING", (aq,))
+                    q = f"{cat.lower()} {city['name'].lower()}"
+                conn.commit(); cur.close(); conn.close()
+            except Exception as e:
+                log(f"Task Claim Error: {e}", "WARNING")
+
+            log(f"🔍 Searching: {q} ({city['name']})")
+            page = await context.new_page()
+            try:
+                await page.goto(f"https://www.tiktok.com/search/user?q={q}", timeout=60000)
+                await asyncio.sleep(5)
+                # Scroll more for high data volume
+                for _ in range(20):
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(1)
+
+                links = await page.query_selector_all('a[href*="/@"]')
+                users = list(set([re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]))
+                await page.close()
+
+                for u in users[:60]:
+                    await engine.extract_profile(context, u, cat)
+                    await asyncio.sleep(random.uniform(0.2, 0.5))
+
+                # Mark as completed
+                conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
+                cur = conn.cursor()
+                cur.execute("UPDATE search_queries SET status='completed' WHERE query=%s", (q,))
+                conn.commit(); cur.close(); conn.close()
+            except Exception:
+                if not page.is_closed(): await page.close()
+
             await asyncio.sleep(2)
         await browser.close()
 
