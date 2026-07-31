@@ -41,43 +41,51 @@ class SupabaseEngine:
         if self.url:
             project_ref = self.url.split('//')[1].split('.')[0]
             self.db_host = f"db.{project_ref}.supabase.co"
-            if self.db_pass:
-                self.use_db = True
+            if self.db_pass: self.use_db = True
 
         try:
             from supabase import create_client
             self.client = create_client(self.url, self.key)
             log("Supabase Connection Initialized", "SUCCESS")
-        except Exception as e:
-            log(f"Supabase Client Error: {e}", "WARNING")
-            self.client = None
+        except Exception: self.client = None
 
     def query(self, table):
         return TableProxy(self, table)
 
-    def ai_generate_keywords(self, city, category):
+    def ai_generate_massive_keywords(self, city, category):
         if not self.groq_token: return []
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
-            prompt = f"Generate 15 unique TikTok search keywords to find local Indonesian sellers in {city} for the {category} category. Use local terms. Format: JSON array of strings only."
-            data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.8}
-            resp = requests.post(url, headers=headers, json=data, timeout=20).json()
+            prompt = f"""Generate 40 unique and highly specific TikTok search keywords for finding local sellers in {city} for the {category} category.
+            Include:
+            - Product names in Indonesian
+            - 'Jual [product] {city}'
+            - '[product] murah {city}'
+            - Local market/street names in {city}
+            - Slang terms used by olshops.
+            Format: JSON array of strings only."""
+
+            data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.9}
+            resp = requests.post(url, headers=headers, json=data, timeout=25).json()
             content = resp['choices'][0]['message']['content']
             match = re.search(r'\[.*\]', content, re.DOTALL)
             return json.loads(match.group(0)) if match else []
-        except Exception: return []
+        except Exception as e:
+            log(f"AI Massive Keyword Error: {e}", "WARNING")
+            return []
 
     def ai_classify(self, username, bio, followers, category):
         clean_bio = (bio or "").strip()
         if clean_bio:
             foreign_script = re.compile(r'[^\x00-\x7F\s\d.,!?;:()\'"%-]')
             if len(foreign_script.findall(clean_bio)) > (len(clean_bio) * 0.05): return False
+
         if not self.groq_token: return True
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
-            prompt = f"Evaluate @{username} | Bio: {bio} | Category: {category}. Is this 100% Indonesian SME in {category}? Answer YES or NO."
+            prompt = f"Evaluate @{username} | Bio: {bio} | Category: {category}. Is this an Indonesian local SME/Seller? Answer YES or NO."
             data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.0}
             resp = requests.post(url, headers=headers, json=data, timeout=12).json()
             return "YES" in resp['choices'][0]['message']['content'].strip().upper()
@@ -125,121 +133,144 @@ class TiktokEngine:
             if self.db.use_db:
                 conn = psycopg2.connect(host=self.db.db_host, database='postgres', user='postgres', password=self.db.db_pass, port='5432')
                 cur = conn.cursor()
-                cur.execute("SELECT * FROM provinces")
-                provinces = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
                 cur.execute("SELECT c.*, p.name as province_name FROM cities c JOIN provinces p ON c.province_id = p.id")
                 cities = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
                 cur.close(); conn.close()
-                return {'provinces': provinces, 'cities': cities}
+                return cities
         except Exception: pass
-        # Fallback to Supabase Client
-        p = self.db.query('provinces').select('*').execute().data
         c = self.db.query('cities').select('*, provinces(name)').execute().data
         for item in c: item['province_name'] = item['provinces']['name']
-        return {'provinces': p, 'cities': c}
+        return c
 
-    async def extract_profile(self, context, username, category):
+    async def extract_profile(self, context, username, category, depth=0):
+        if depth > 1: return [] # Limit recursive discovery
+
         existing = self.db.query('sellers').select('username').eq('username', username).execute()
-        if existing.data: return False
+        if existing.data: return []
+
         page = await context.new_page()
+        suggested_users = []
         try:
             url = f"https://www.tiktok.com/@{username}"
             await page.goto(url, wait_until="domcontentloaded", timeout=25000)
             await page.wait_for_selector('[data-e2e="user-title"]', timeout=8000)
+
             name = await page.inner_text('[data-e2e="user-title"]')
             bio = await page.inner_text('[data-e2e="user-bio"]') if await page.query_selector('[data-e2e="user-bio"]') else ""
             f_raw = await page.inner_text('[data-e2e="followers-count"]')
             f = f_raw.upper()
             followers = int(float(f.replace('M',''))*1e6) if 'M' in f else int(float(f.replace('K',''))*1e3) if 'K' in f else int(''.join(filter(str.isdigit, f)) or 0)
-            if followers > 100000: return False
-            if not self.db.ai_classify(username, bio, followers, category): return False
-            full = (name + " " + bio).lower()
-            city, prov = "", ""
-            for c in self.regions['cities']:
-                if c['name'].lower() in full: city, prov = c['name'], c['province_name']; break
-            if not city:
-                for p in self.regions['provinces']:
-                    if p['name'].lower() in full: prov = p['name']; break
-            data = {
-                'platform': 'tiktok', 'username': username, 'display_name': name or username,
-                'bio': bio, 'followers_count': followers, 'phone_number': (re.search(r'(?:\+62|62|08)[0-9]{9,12}', bio.replace(" ","").replace("-","")) or ["N/A"])[0],
-                'category': category, 'province': prov or "Indonesia", 'city': city or "",
-                'potential_score': int(min((followers/5000)+50, 100)),
-                'potential_reason': f"AI Verified SME in {category}.",
-                'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
-            }
-            self.db.query('sellers').upsert(data)
-            log(f"Saved @{username} in {city or 'Unknown'}", "SUCCESS")
-            return True
-        except Exception: return False
+
+            if followers < 100000 and self.db.ai_classify(username, bio, followers, category):
+                full = (name + " " + bio).lower()
+                city, prov = "", ""
+                for c in self.regions:
+                    if c['name'].lower() in full: city, prov = c['name'], c['province_name']; break
+
+                data = {
+                    'platform': 'tiktok', 'username': username, 'display_name': name or username,
+                    'bio': bio, 'followers_count': followers, 'phone_number': (re.search(r'(?:\+62|62|08)[0-9]{9,12}', bio.replace(" ","").replace("-","")) or ["N/A"])[0],
+                    'category': category, 'province': prov or "Indonesia", 'city': city or "",
+                    'potential_score': int(min((followers/5000)+50, 100)),
+                    'potential_reason': f"AI Verified SME. Recursive depth {depth}.",
+                    'tiktok_url': url, 'last_scraped': datetime.now().isoformat()
+                }
+                self.db.query('sellers').upsert(data)
+                log(f"Saved SME @{username} in {city or 'ID'}", "SUCCESS")
+
+                # DISCOVERY: Look for suggested accounts (the dropdown icon on mobile/web)
+                # On web, similar accounts are sometimes visible or can be triggered.
+                # We'll grab any other profile links on the page as potential candidates.
+                links = await page.query_selector_all('a[href*="/@"]')
+                for l in links:
+                    href = await l.get_attribute('href')
+                    match = re.search(r'@([\w.]+)', href)
+                    if match and match.group(1) != username:
+                        suggested_users.append(match.group(1))
+
+            return list(set(suggested_users))
+        except Exception: return []
         finally: await page.close()
 
 async def main_loop():
     db = SupabaseEngine()
     engine = TiktokEngine(db)
+    all_cities = engine.regions
     worker_id = int(os.environ.get('WORKER_INDEX', 0))
+    total_workers = 15
 
-    # FOCUS REGIONS: Jakarta Selatan, Jakarta Timur, Jakarta Pusat, D.I. Yogyakarta
-    focus_cities = ["Jakarta Selatan", "Jakarta Timur", "Jakarta Pusat", "Yogyakarta"]
-    all_cities = engine.regions['cities']
+    # Priority Regions Focus
+    priority_names = ["Jakarta Selatan", "Jakarta Timur", "Jakarta Pusat", "Yogyakarta"]
+    priority_cities = [c for c in all_cities if any(p.lower() in c['name'].lower() for p in priority_names)]
+    other_cities = [c for c in all_cities if c not in priority_cities]
 
-    # Priority cities first
-    priority_cities = [c for c in all_cities if any(fc.lower() in c['name'].lower() for fc in focus_cities)]
-    other_cities = [c for c in all_cities if not any(fc.lower() in c['name'].lower() for fc in focus_cities)]
-
-    # Redistribute among 15 workers
-    if worker_id < 8: # First 8 workers focus purely on Priority Regions
-        chunk = len(priority_cities) // 8
-        my_cities = priority_cities[worker_id*chunk : (worker_id+1)*chunk if worker_id < 7 else len(priority_cities)]
-    else: # Next 7 workers focus on the rest of Indonesia
-        rel_id = worker_id - 8
-        chunk = len(other_cities) // 7
-        my_cities = other_cities[rel_id*chunk : (rel_id+1)*chunk if rel_id < 6 else len(other_cities)]
+    if worker_id < 10: # 10 Workers on Priority
+        chunk = len(priority_cities) // 10
+        my_cities = priority_cities[worker_id*chunk : (worker_id+1)*chunk if worker_id < 9 else len(priority_cities)]
+    else: # 5 Workers on Others
+        rel_id = worker_id - 10
+        chunk = len(other_cities) // 5
+        my_cities = other_cities[rel_id*chunk : (rel_id+1)*chunk if rel_id < 4 else len(other_cities)]
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        log(f"WORKER {worker_id+1} STARTED | Target Cities: {len(my_cities)}")
+        log(f"WORKER {worker_id+1} ONLINE | Targets: {len(my_cities)} cities")
 
         while True:
-            # Update status
-            db.query('system_status').upsert({'id': f'worker_{worker_id+1}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
-            db.query('system_status').upsert({'id': 'main_engine', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
+            # Sync Status
+            try:
+                db.query('system_status').upsert({'id': f'worker_{worker_id+1}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
+                db.query('system_status').upsert({'id': 'main_engine', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
+            except Exception: pass
 
             city = random.choice(my_cities)
             cat = random.choice(engine.categories)
 
-            q = f"{cat.lower()} {city['name'].lower()}"
+            # Massive Keyword Generation
             try:
-                if db.use_db:
-                    conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
-                    cur = conn.cursor()
-                    cur.execute("SELECT query FROM search_queries WHERE status='pending' LIMIT 1 FOR UPDATE SKIP LOCKED")
-                    row = cur.fetchone()
-                    if row: q = row[0]; cur.execute("UPDATE search_queries SET status='processing' WHERE query=%s", (q,))
-                    else:
-                        ai_qs = db.ai_generate_keywords(city['name'], cat)
-                        for aq in ai_qs: cur.execute("INSERT INTO search_queries (query, status) VALUES (%s, 'pending') ON CONFLICT DO NOTHING", (aq,))
-                    conn.commit(); cur.close(); conn.close()
-            except Exception: pass
+                conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
+                cur = conn.cursor()
+                cur.execute("SELECT query FROM search_queries WHERE status='pending' AND query LIKE %s LIMIT 1 FOR UPDATE SKIP LOCKED", (f"%{city['name']}%",))
+                row = cur.fetchone()
+                if row:
+                    q = row[0]
+                    cur.execute("UPDATE search_queries SET status='processing' WHERE query=%s", (q,))
+                else:
+                    new_qs = db.ai_generate_massive_keywords(city['name'], cat)
+                    for nq in new_qs: cur.execute("INSERT INTO search_queries (query, status) VALUES (%s, 'pending') ON CONFLICT DO NOTHING", (nq,))
+                    q = f"{cat} {city['name']}"
+                conn.commit(); cur.close(); conn.close()
+            except Exception: q = f"{cat} {city['name']}"
 
-            log(f"🔍 Searching: {q} in {city['name']}")
+            log(f"🔍 Deep Search: {q}")
             page = await context.new_page()
             try:
                 await page.goto(f"https://www.tiktok.com/search/user?q={q}", timeout=60000)
                 await asyncio.sleep(5)
-                # Deep scroll for 2000+ data requirement
-                for _ in range(25): await page.evaluate("window.scrollTo(0, document.body.scrollHeight)"); await asyncio.sleep(1)
+                for _ in range(40): # Ultra Deep Scroll
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(0.5)
+
                 links = await page.query_selector_all('a[href*="/@"]')
                 users = list(set([re.search(r'@([\w.]+)', await l.get_attribute('href')).group(1) for l in links if re.search(r'@([\w.]+)', await l.get_attribute('href'))]))
                 await page.close()
-                for u in users: await engine.extract_profile(context, u, cat); await asyncio.sleep(random.uniform(0.1, 0.3))
 
-                if db.use_db:
+                for u in users[:100]:
+                    # RECURSIVE DISCOVERY
+                    suggested = await engine.extract_profile(context, u, cat, depth=0)
+                    for su in suggested[:5]: # Explore 5 similar accounts per discovery
+                        await engine.extract_profile(context, su, cat, depth=1)
+                        await asyncio.sleep(0.2)
+
+                # Mark Done
+                try:
                     conn = psycopg2.connect(host=db.db_host, database='postgres', user='postgres', password=db.db_pass, port='5432')
                     cur = conn.cursor(); cur.execute("UPDATE search_queries SET status='completed' WHERE query=%s", (q,)); conn.commit(); cur.close(); conn.close()
+                except Exception: pass
             except Exception:
                 if not page.is_closed(): await page.close()
+
             await asyncio.sleep(1)
         await browser.close()
 
