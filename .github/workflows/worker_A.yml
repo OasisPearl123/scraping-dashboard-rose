@@ -6,6 +6,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -19,13 +20,17 @@ jobs:
           pip install -r scraper/requirements.txt
           python -m playwright install chromium
           python -m playwright install-deps chromium
-      - name: Run Engine
+      - name: Run Engine (Fast Mode)
         env:
           PYTHONUNBUFFERED: '1'
           WORKER_INDEX: '0'
+          WORKER_TOTAL: '4'
+          SCRAPE_MODE: 'fast'
+          MAX_PROFILES: '200'
+          MAX_SCROLLS: '30'
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           PASSWORD_SUPABASE: ${{ secrets.PASSWORD_SUPABASE }}
           token_groq: ${{ secrets.token_groq }}
-        run: python scraper/engine.py
+        run: python scraper/engine_fast.py

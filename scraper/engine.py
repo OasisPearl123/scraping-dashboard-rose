@@ -58,7 +58,6 @@ class SupabaseREST:
 
     def upsert(self, table, data, on_conflict="username"):
         try:
-            # FIX: Added on_conflict parameter to the URL for PostgREST upsert
             headers = {**self.headers, "Prefer": "resolution=merge-duplicates,return=minimal"}
             url = f"{self.url}/rest/v1/{table}?on_conflict={on_conflict}"
             r = requests.post(url, headers=headers, json=data, timeout=15)
@@ -85,6 +84,56 @@ class TiktokEngine:
         self.db = db
         self.categories = ["Kuliner", "Fashion", "Beauty", "Skincare", "Gadget", "Elektronik", "Home Living", "Jasa"]
         self.cities = self.load_cities()
+
+        # 🔥 DINAMIS: Ambil kata-kata Indonesia dari database atau environment
+        self.INDONESIA_KEYWORDS = self.load_indonesian_keywords()
+        self.FOREIGN_WORDS = self.load_foreign_blacklist()
+
+    def load_indonesian_keywords(self):
+        """Load Indonesian keywords from database or use defaults"""
+        # Coba ambil dari database
+        try:
+            keywords = self.db.get("indonesian_keywords", "select=keyword")
+            if keywords:
+                return set([k['keyword'].lower() for k in keywords])
+        except:
+            pass
+
+        # Fallback ke environment variable
+        env_keywords = os.environ.get('INDONESIA_KEYWORDS', '')
+        if env_keywords:
+            return set([k.strip().lower() for k in env_keywords.split(',')])
+
+        # Default minimal jika tidak ada data
+        return {
+            "indonesia", "jakarta", "bandung", "surabaya", "medan", "semarang",
+            "order", "pesan", "murah", "reseller", "grosir", "cod", "ready",
+            "tokopedia", "shopee", "lazada", "blibli", "bukalapak",
+            "wa", "ongkir", "pengiriman", "jual", "beli", "produk", "lokal"
+        }
+
+    def load_foreign_blacklist(self):
+        """Load foreign country blacklist from database or environment"""
+        # Coba ambil dari database
+        try:
+            countries = self.db.get("foreign_countries", "select=name")
+            if countries:
+                return set([c['name'].lower() for c in countries])
+        except:
+            pass
+
+        # Fallback ke environment variable
+        env_blacklist = os.environ.get('FOREIGN_BLACKLIST', '')
+        if env_blacklist:
+            return set([b.strip().lower() for b in env_blacklist.split(',')])
+
+        # Default minimal
+        return {
+            "malaysia", "singapore", "philippines", "thailand", "india",
+            "pakistan", "usa", "uk", "england", "dubai", "mexico",
+            "france", "italy", "germany", "korea", "japan", "china",
+            "shipping worldwide", "international shipping"
+        }
 
     def load_cities(self):
         log("Fetching cities and provinces...")
@@ -114,112 +163,252 @@ class TiktokEngine:
         return cities
 
     def parse_followers(self, text):
-        text = text.upper().replace(",", ".").strip()
-        if text.endswith("K"): return int(float(text[:-1]) * 1000)
-        if text.endswith("M"): return int(float(text[:-1]) * 1000000)
-        if text.endswith("B"): return int(float(text[:-1]) * 1000000000)
-        return int(re.sub(r"\D", "", text) or 0)
+        """Parse followers dengan support berbagai format"""
+        if not text:
+            return 0
+
+        # Bersihkan text
+        text = text.upper().strip()
+
+        # Handle format "1.2M", "15.8K", "1.1B"
+        if text.endswith("K"):
+            try:
+                return int(float(text[:-1].replace(",", ".")) * 1000)
+            except:
+                return 0
+        if text.endswith("M"):
+            try:
+                return int(float(text[:-1].replace(",", ".")) * 1000000)
+            except:
+                return 0
+        if text.endswith("B"):
+            try:
+                return int(float(text[:-1].replace(",", ".")) * 1000000000)
+            except:
+                return 0
+
+        # Handle format "1,234" atau "1.234"
+        try:
+            # Hapus semua karakter non-digit kecuali koma/titik
+            cleaned = re.sub(r'[^\d,.]', '', text)
+            # Ganti koma dengan titik untuk parsing
+            cleaned = cleaned.replace(',', '.')
+            # Jika masih ada titik, berarti desimal atau ribuan
+            if '.' in cleaned:
+                # Jika format "1.234" (ribuan) -> "1234"
+                parts = cleaned.split('.')
+                if len(parts) == 2 and len(parts[1]) == 3:
+                    cleaned = parts[0] + parts[1]
+            return int(float(cleaned) or 0)
+        except:
+            return 0
 
     def is_indonesian_bio(self, bio):
-        """Check if bio is Indonesian using dynamic city/province names from database"""
-        if not bio: return False
+        """Enhanced Indonesian bio detection with dynamic keywords"""
+        if not bio:
+            return False
+
         bio_lower = bio.lower()
 
-        # 1. HEURISTIC: Strict non-latin script rejection
+        # 1. STRICT: Reject heavy non-latin script
         foreign_script = re.compile(r'[^\x00-\x7F\s\d.,!?;:()\'"%-]')
-        if len(foreign_script.findall(bio)) > (len(bio) * 0.1): return False
+        if len(foreign_script.findall(bio)) > (len(bio) * 0.1):
+            return False
 
-        # 2. MATCH AGAINST DB DATA (Cities & Provinces)
-        # We also check for common Indonesian olshop terms
-        id_terms = {"wa", "order", "pesan", "murah", "reseller", "grosir", "cod", "tokopedia", "shopee", "ready", "ongkir", "jual"}
+        # 2. BLACKLIST: Reject foreign countries
+        for word in self.FOREIGN_WORDS:
+            if word in bio_lower:
+                return False
 
-        # Check if bio mentions any city or province from our DB
+        # 3. WHITELIST: Check for Indonesian cities/provinces
         for city in self.cities:
-            if city['name'].lower() in bio_lower: return True
-            if city['province_name'].lower() in bio_lower: return True
+            if city['name'].lower() in bio_lower:
+                return True
+            if city['province_name'].lower() in bio_lower:
+                return True
 
-        # Check for common ID commerce terms
+        # 4. Check for Indonesian commerce keywords
         matches = 0
-        for term in id_terms:
-            if term in bio_lower:
+        for keyword in self.INDONESIA_KEYWORDS:
+            if keyword in bio_lower:
                 matches += 1
-                if matches >= 2: return True
+                if matches >= 2:  # Need at least 2 keywords
+                    return True
 
         return False
 
-    async def extract_profile(self, context, username, category):
-        if not username: return
+    async def extract_profile(self, context, username, category, max_retries=3):
+        """Extract profile dengan retry dan improved parsing"""
+        if not username:
+            return
+
         existing = self.db.get("sellers", f"username=eq.{username}&select=username")
-        if existing: return
+        if existing:
+            return
 
         page = await context.new_page()
-        try:
-            for retry in range(2):
-                try:
-                    await page.goto(f"https://www.tiktok.com/@{username}", wait_until="domcontentloaded", timeout=20000)
-                    await page.wait_for_timeout(2000)
 
-                    name_el = await page.query_selector('[data-e2e="user-title"]')
-                    display_name = await name_el.inner_text() if name_el else username
+        for attempt in range(max_retries):
+            try:
+                await page.goto(f"https://www.tiktok.com/@{username}", wait_until="domcontentloaded", timeout=20000)
+                await page.wait_for_timeout(2500)  # Wait for dynamic content
 
-                    bio_el = await page.query_selector('[data-e2e="user-bio"]')
-                    bio = await bio_el.inner_text() if bio_el else ""
+                # Scroll to trigger lazy loading
+                await page.mouse.wheel(0, 500)
+                await asyncio.sleep(1)
 
-                    f_el = await page.query_selector('[data-e2e="followers-count"]')
-                    followers = self.parse_followers(await f_el.inner_text()) if f_el else 0
+                # Get display name
+                name_el = await page.query_selector('[data-e2e="user-title"]')
+                display_name = await name_el.inner_text() if name_el else username
 
-                    if followers >= 100000: return
-                    if not self.is_indonesian_bio(bio):
-                        log(f"⏭️ Skipping @{username}: Not relevant", "WARNING")
-                        return
+                # Get bio
+                bio_el = await page.query_selector('[data-e2e="user-bio"]')
+                bio = await bio_el.inner_text() if bio_el else ""
 
-                    city_name, prov_name = "", "Indonesia"
-                    full = (display_name + " " + bio).lower()
-                    for c in self.cities:
-                        if c['name'].lower() in full: city_name, prov_name = c['name'], c['province_name']; break
+                # Get followers
+                f_el = await page.query_selector('[data-e2e="followers-count"]')
+                followers_text = await f_el.inner_text() if f_el else "0"
+                followers = self.parse_followers(followers_text)
 
-                    data = {
-                        "username": username, "display_name": display_name or username,
-                        "bio": bio, "followers_count": followers, "category": category,
-                        "province": prov_name, "city": city_name,
-                        "tiktok_url": f"https://www.tiktok.com/@{username}",
-                        "last_scraped": datetime.now().isoformat()
-                    }
-                    self.db.upsert('sellers', data)
-                    log(f"✅ Saved @{username} | {city_name or 'ID'}", "SUCCESS")
+                # Skip if followers too high (not SME)
+                if followers >= 100000:
+                    log(f"⏭️ @{username}: Too many followers ({followers:,})", "WARNING")
                     return
-                except Exception:
-                    await asyncio.sleep(2)
-                    continue
-        except Exception: pass
-        finally: await page.close()
 
-    async def search_page(self, context, keyword):
+                # Check if Indonesian
+                if not self.is_indonesian_bio(bio):
+                    log(f"⏭️ @{username}: Not Indonesian", "WARNING")
+                    return
+
+                # Detect city from bio
+                city_name, prov_name = "", "Indonesia"
+                full_text = f"{display_name} {bio}".lower()
+                for city in self.cities:
+                    if city['name'].lower() in full_text:
+                        city_name, prov_name = city['name'], city['province_name']
+                        break
+
+                # Save data
+                data = {
+                    "username": username,
+                    "display_name": display_name or username,
+                    "bio": bio,
+                    "followers_count": followers,
+                    "category": category,
+                    "province": prov_name,
+                    "city": city_name,
+                    "tiktok_url": f"https://www.tiktok.com/@{username}",
+                    "last_scraped": datetime.now().isoformat()
+                }
+
+                self.db.upsert('sellers', data)
+                log(f"✅ Saved @{username} | Followers: {followers:,} | {city_name or 'Indonesia'}", "SUCCESS")
+                return
+
+            except Exception as e:
+                log(f"Retry {attempt+1}/{max_retries} for @{username}: {str(e)[:50]}", "WARNING")
+                await asyncio.sleep(random.uniform(2, 4))
+                continue
+
+        log(f"❌ Failed @{username} after {max_retries} attempts", "ERROR")
+        await page.close()
+
+    async def search_page(self, context, keyword, max_scrolls=80):
+        """Search with infinite scroll until no new content"""
         page = await context.new_page()
         users = set()
+
         try:
-            await page.goto(f"https://www.tiktok.com/search/user?q={keyword.lower().replace(' ', '+')}", timeout=45000)
-            await asyncio.sleep(4)
-            for _ in range(30):
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(0.5)
+            # Retry for page load
+            for retry in range(2):
+                try:
+                    await page.goto(f"https://www.tiktok.com/search/user?q={keyword.lower().replace(' ', '+')}", timeout=45000)
+                    break
+                except:
+                    if retry == 0:
+                        await asyncio.sleep(3)
+                    else:
+                        return []
 
-            anchors = await page.query_selector_all('a[href*="/@"]')
-            for a in anchors:
-                href = await a.get_attribute("href")
-                match = re.search(r'@([\w._]+)', href or "")
-                if match: users.add(match.group(1).lower())
+            await asyncio.sleep(random.uniform(2, 4))
+
+            # INFINITE SCROLL
+            last_height = 0
+            same_count = 0
+            scroll_attempts = 0
+
+            while same_count < 5 and scroll_attempts < max_scrolls:
+                # Smooth scroll
+                await page.evaluate("""
+                    window.scrollTo({
+                        top: document.body.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                """)
+
+                # Random delay like human
+                await asyncio.sleep(random.uniform(1.5, 3.5))
+
+                # Check if new content loaded
+                new_height = await page.evaluate("document.body.scrollHeight")
+
+                if new_height == last_height:
+                    same_count += 1
+                else:
+                    same_count = 0
+                    last_height = new_height
+
+                scroll_attempts += 1
+
+                # Extract usernames
+                anchors = await page.query_selector_all('a[href*="/@"]')
+                for a in anchors:
+                    href = await a.get_attribute("href")
+                    if href:
+                        match = re.search(r'@([\w._]+)', href)
+                        if match:
+                            users.add(match.group(1).lower())
+
+                # Log progress
+                if len(users) > 0 and len(users) % 100 == 0:
+                    log(f"Found {len(users)} usernames for '{keyword}'", "INFO")
+
+            log(f"✅ Found {len(users)} unique users for '{keyword}'", "SUCCESS")
             return list(users)
-        except Exception: return []
-        finally: await page.close()
 
-    async def process_keyword(self, context, keyword, category):
-        log(f"🔍 Searching: {keyword}")
+        except Exception as e:
+            log(f"Search failed for '{keyword}': {str(e)[:50]}", "ERROR")
+            return []
+        finally:
+            await page.close()
+
+    async def process_keyword(self, context, keyword, category, max_profiles=500):
+        """Process keyword with configurable max profiles"""
+        log(f"🔍 Searching: {keyword} (Category: {category})")
+
         users = await self.search_page(context, keyword)
-        if not users: return
-        for username in users[:100]:
-            await self.extract_profile(context, username, category)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
+        if not users:
+            log(f"No users found for '{keyword}'", "WARNING")
+            return
+
+        # Process users with delay
+        processed = 0
+        for username in users[:max_profiles]:
+            try:
+                await self.extract_profile(context, username, category)
+                processed += 1
+
+                # Random delay between profiles
+                await asyncio.sleep(random.uniform(1.5, 3.5))
+
+                if processed % 20 == 0:
+                    log(f"Processed {processed}/{min(len(users), max_profiles)} profiles", "INFO")
+
+            except Exception as e:
+                log(f"Error processing @{username}: {str(e)[:50]}", "ERROR")
+                continue
+
+        log(f"✅ Completed {keyword}: processed {processed} profiles", "SUCCESS")
 
 async def main_loop():
     db = SupabaseREST()
@@ -230,36 +419,74 @@ async def main_loop():
         log("CRITICAL: Failed to load cities.", "ERROR")
         return
 
-    priority_names = ["Jakarta Selatan", "Jakarta Timur", "Jakarta Pusat", "Yogyakarta"]
+    # Priority cities from environment or database
+    priority_names = os.environ.get('PRIORITY_CITIES', 'Jakarta Selatan,Jakarta Timur,Jakarta Pusat,Yogyakarta').split(',')
     priority_cities = [c for c in engine.cities if any(p.lower() in c['name'].lower() for p in priority_names)]
     other_cities = [c for c in engine.cities if c not in priority_cities]
-    my_cities = priority_cities + (other_cities[:len(other_cities)//2] if worker_idx == 0 else other_cities[len(other_cities)//2:])
+
+    # Distribute cities
+    if other_cities:
+        split_point = len(other_cities) // 2
+        my_cities = priority_cities + (other_cities[:split_point] if worker_idx == 0 else other_cities[split_point:])
+    else:
+        my_cities = priority_cities
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        log(f"🚀 WORKER {worker_idx} START")
+
+        # Rotate user agents
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ]
+
+        context = await browser.new_context(
+            user_agent=random.choice(user_agents),
+            viewport={'width': random.randint(1200, 1920), 'height': random.randint(800, 1080)}
+        )
+
+        log(f"🚀 WORKER {worker_idx} START | Cities: {len(my_cities)}")
 
         while True:
+            # Update status
             db.upsert('system_status', {'id': f'worker_{worker_idx}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
             db.upsert('system_status', {'id': 'main_engine', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
 
+            # Select random city and category
             city = random.choice(my_cities)
-            cat = random.choice(engine.categories)
+            category = random.choice(engine.categories)
 
-            keyword = f"{cat} {city['name']}"
+            # Get or generate keywords
+            keyword = f"{category} {city['name']}"
             pending = db.get("search_queries", f"status=eq.pending&query=like.*{city['name']}*&limit=1")
+
             if pending:
                 keyword = pending[0]['query']
                 db.upsert('search_queries', {'query': keyword, 'status': 'processing'}, on_conflict='query')
             else:
-                keywords = db.ai_generate_keywords(city['name'], cat)
-                for kw in keywords[:15]: db.upsert('search_queries', {'query': kw, 'status': 'pending'}, on_conflict='query')
-                if keywords: keyword = keywords[0]
+                keywords = db.ai_generate_keywords(city['name'], category)
+                if keywords:
+                    for kw in keywords[:15]:
+                        db.upsert('search_queries', {'query': kw, 'status': 'pending'}, on_conflict='query')
+                    keyword = keywords[0]
+                    db.upsert('search_queries', {'query': keyword, 'status': 'processing'}, on_conflict='query')
 
-            await engine.process_keyword(context, keyword, cat)
+            # Process keyword
+            await engine.process_keyword(context, keyword, category, max_profiles=int(os.environ.get('MAX_PROFILES', 500)))
+
+            # Mark as completed
             db.upsert('search_queries', {'query': keyword, 'status': 'completed'}, on_conflict='query')
-            await asyncio.sleep(random.uniform(2, 5))
+
+            # Random delay between keywords
+            await asyncio.sleep(random.uniform(5, 15))
+
+            # Rotate user agent occasionally
+            if random.random() < 0.1:
+                await context.set_extra_http_headers({"User-Agent": random.choice(user_agents)})
 
 if __name__ == "__main__":
-    asyncio.run(main_loop())
+    try:
+        asyncio.run(main_loop())
+    except KeyboardInterrupt:
+        log("Shutting down gracefully...", "WARNING")
