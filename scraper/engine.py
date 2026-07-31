@@ -23,10 +23,14 @@ def log(msg, type="INFO"):
     reset = "\033[0m"
     print(f"[{timestamp}] {color}{type:7}{reset} | {msg}", flush=True)
 
+class Res:
+    def __init__(self, data=None): self.data = data or []
+
 class SupabaseREST:
     def __init__(self):
         self.url = os.environ.get('VITE_SUPABASE_URL', '').rstrip('/')
-        self.key = os.environ.get('SUPABASE_SERVICE_KEY') or os.environ.get('VITE_SUPABASE_ANON_KEY')
+        # Use VITE_SUPABASE_ANON_KEY as primary because it's verified working (200 OK)
+        self.key = os.environ.get('VITE_SUPABASE_ANON_KEY') or os.environ.get('SUPABASE_SERVICE_KEY')
         self.db_pass = os.environ.get('PASSWORD_SUPABASE')
         self.groq_token = os.environ.get('token_groq')
 
@@ -36,8 +40,7 @@ class SupabaseREST:
         self.headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation"
+            "Content-Type": "application/json"
         }
 
         self.db_host = ""
@@ -56,8 +59,7 @@ class SupabaseREST:
 
     def upsert(self, table, data, on_conflict="username"):
         try:
-            # Supabase REST uses POST with resolution=merge-duplicates for upsert
-            headers = {**self.headers, "Prefer": f"resolution=merge-duplicates,return=minimal"}
+            headers = {**self.headers, "Prefer": "resolution=merge-duplicates,return=minimal"}
             r = requests.post(f"{self.url}/rest/v1/{table}", headers=headers, json=data, timeout=15)
             r.raise_for_status()
             return True
@@ -111,8 +113,7 @@ class TiktokEngine:
                 if data:
                     log(f"Loaded {len(data)} cities via Direct DB.", "SUCCESS")
                     return data
-            except Exception as e:
-                log(f"Direct DB fetch failed, using REST fallback: {e}", "WARNING")
+            except Exception: pass
 
         # REST fallback
         cities = self.db.get("cities", "select=name,province_id")
@@ -130,7 +131,6 @@ class TiktokEngine:
 
     async def extract_profile(self, context, username, category, depth=0):
         if depth > 1: return []
-        # Check uniqueness via REST
         existing = self.db.get("sellers", f"username=eq.{username}&select=username")
         if existing: return []
 
@@ -179,8 +179,6 @@ async def main_loop():
     priority_names = ["Jakarta Selatan", "Jakarta Timur", "Jakarta Pusat", "Yogyakarta"]
     priority_cities = [c for c in engine.cities if any(p.lower() in c['name'].lower() for p in priority_names)]
     other_cities = [c for c in engine.cities if c not in priority_cities]
-
-    # Simple partition
     my_cities = priority_cities + (other_cities[:len(other_cities)//2] if worker_idx == 0 else other_cities[len(other_cities)//2:])
 
     async with async_playwright() as p:
@@ -189,14 +187,12 @@ async def main_loop():
         log(f"WORKER {worker_idx} ONLINE | Cities: {len(my_cities)}")
 
         while True:
-            # Heartbeat via REST
             db.upsert('system_status', {'id': f'worker_{worker_idx}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
             db.upsert('system_status', {'id': 'main_engine', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
 
             city = random.choice(my_cities)
             cat = random.choice(engine.categories)
 
-            # Massive Discovery Coordination
             q = f"{cat} {city['name']}"
             pending = db.get("search_queries", f"status=eq.pending&query=like.*{city['name']}*&limit=1")
             if pending:
