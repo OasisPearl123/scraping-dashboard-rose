@@ -1,8 +1,8 @@
-name: TikTok Scraper Worker 11
+name: TikTok Scraper Main Worker
 
 on:
   schedule:
-    - cron: '40 */6 * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -27,11 +27,10 @@ jobs:
       - name: Run Engine
         env:
           PYTHONUNBUFFERED: '1'
-          WORKER_INDEX: '10'
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          WORKER_INDEX: '0'
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           PASSWORD_SUPABASE: ${{ secrets.PASSWORD_SUPABASE }}
           token_groq: ${{ secrets.token_groq }}
         run: python scraper/engine.py
