@@ -4,6 +4,7 @@ import json
 import asyncio
 import random
 import requests
+import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ for p in env_paths:
     if p.exists(): load_dotenv(p)
 
 def log(msg, type="INFO"):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now().strftime("%H:%M:%S")
     color = "\033[94m" if type == "INFO" else "\033[92m" if type == "SUCCESS" else "\033[93m" if type == "WARNING" else "\033[91m"
     reset = "\033[0m"
     print(f"[{timestamp}] {color}{type:7}{reset} | {msg}", flush=True)
@@ -60,38 +61,47 @@ class SupabaseREST:
             return False
 
     def lock_keyword(self, keyword, worker_id):
-        """Improved atomic lock untuk menghindari duplikasi"""
+        """Fixed lock with proper URL encoding"""
         try:
-            # 1. Cek apakah keyword sudah di-lock
-            existing = self.get("search_queries", f"query=eq.{keyword}&select=status,locked_by,locked_at")
+            # 1. URL encode keyword untuk query
+            encoded_keyword = urllib.parse.quote(keyword)
+
+            # 2. Cek apakah keyword sudah di-lock
+            existing = self.get("search_queries", f"query=eq.{encoded_keyword}&select=status,locked_by,locked_at")
 
             if existing:
                 record = existing[0]
-                # Jika status processing dan lock masih fresh (< 10 menit)
                 if record.get('status') == 'processing':
                     locked_at_str = record.get('locked_at')
                     if locked_at_str:
                         locked_at = datetime.fromisoformat(locked_at_str)
-                        if (datetime.now() - locked_at).seconds < 600:  # 10 menit
-                            return False  # Masih di-lock worker lain
+                        if (datetime.now() - locked_at).seconds < 600:
+                            log(f"🔒 {keyword} still locked by {record.get('locked_by')}", "WARNING")
+                            return False
 
-            # 2. Ambil lock
+            # 3. Ambil lock
             headers = {**self.headers, "Prefer": "return=representation"}
             data = {
-                "query": keyword,
+                "query": keyword,  # Data pakai keyword asli
                 "status": "processing",
                 "locked_by": worker_id,
                 "locked_at": datetime.now().isoformat()
             }
             url = f"{self.url}/rest/v1/search_queries?on_conflict=query"
             r = requests.post(url, headers=headers, json=data, timeout=10)
-            return r.status_code in [200, 201]
+
+            if r.status_code in [200, 201]:
+                log(f"🔓 Lock acquired: {keyword}", "INFO")
+                return True
+            else:
+                log(f"Lock failed with status {r.status_code}: {keyword}", "WARNING")
+                return False
+
         except Exception as e:
-            log(f"Lock failed for {keyword}: {e}", "WARNING")
+            log(f"Lock error for '{keyword}': {e}", "ERROR")
             return False
 
     def ai_generate_keywords(self, city, category):
-        """Generate keywords with AI"""
         if not self.groq_token:
             return []
         try:
@@ -194,7 +204,8 @@ class FastTiktokEngine:
             return
 
         # Cek duplikat di database
-        existing = self.db.get("sellers", f"username=eq.{username}&select=username")
+        encoded_username = urllib.parse.quote(username)
+        existing = self.db.get("sellers", f"username=eq.{encoded_username}&select=username")
         if existing:
             self.processed_usernames.add(username)
             return
@@ -315,7 +326,7 @@ class FastTiktokEngine:
             await asyncio.sleep(random.uniform(0.5, 1))
 
     async def generate_keywords(self):
-        """Generate keywords secara cerdas"""
+        """Generate keywords dengan filter karakter aman"""
         keywords = []
 
         # 1. Coba ambil pending keywords dari database
@@ -323,31 +334,39 @@ class FastTiktokEngine:
         if pending:
             return [p['query'] for p in pending]
 
-        # 2. Generate dari AI (jika ada token)
+        # 2. Generate dari AI
         if self.db.groq_token:
-            for city in self.cities[:5]:  # Hanya 5 kota
-                for cat in self.categories[:3]:  # Hanya 3 kategori
+            for city in self.cities[:5]:
+                for cat in self.categories[:3]:
                     ai_keywords = self.db.ai_generate_keywords(city['name'], cat)
                     if ai_keywords:
-                        keywords.extend(ai_keywords[:5])
+                        # Filter keyword yang aman (hanya alphanumeric + spasi)
+                        for kw in ai_keywords[:5]:
+                            # Hanya karakter aman
+                            safe_kw = re.sub(r'[^\w\s\-]', '', kw)
+                            if safe_kw and len(safe_kw) > 3:
+                                keywords.append(safe_kw)
                     await asyncio.sleep(0.1)
 
-        # 3. Fallback manual
+        # 3. Fallback manual dengan keyword aman
         if not keywords:
             for city in self.cities[:10]:
                 for cat in self.categories[:3]:
+                    # Keyword dengan format aman
                     keywords.append(f"{cat} {city['name']}")
                     keywords.append(f"{cat} murah {city['name']}")
                     keywords.append(f"jual {cat} {city['name']}")
-                    keywords.append(f"beli {cat} {city['name']}")
 
-        # Filter berdasarkan worker (hash)
+        # Filter berdasarkan worker
         my_keywords = []
         for kw in keywords:
+            # Skip keyword dengan karakter aneh
+            if re.search(r'[^\w\s\-]', kw):
+                continue
             if hash(kw) % self.total_workers == self.worker_id:
                 my_keywords.append(kw)
 
-        return my_keywords[:20]  # Maksimal 20 keyword per sesi
+        return my_keywords[:20]
 
 async def main_fast():
     db = SupabaseREST()
@@ -361,7 +380,7 @@ async def main_fast():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             viewport={'width': 1280, 'height': 720}
         )
 
