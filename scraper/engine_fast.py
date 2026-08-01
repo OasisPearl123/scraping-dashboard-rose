@@ -75,7 +75,7 @@ class SupabaseREST:
                         if (datetime.now(locked_at.tzinfo) - locked_at).total_seconds() < 600:
                             return False
 
-            headers = {**self.headers, "Prefer": "return=representation"}
+            headers = {**self.headers, "Prefer": "resolution=merge-duplicates,return=representation"}
             data = {
                 "query": keyword,
                 "status": "processing",
