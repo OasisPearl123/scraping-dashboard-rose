@@ -310,18 +310,6 @@ function Dashboard({ user, onLogout }) {
                   </div>
                 </div>
 
-                {isProcessing && activeScraping && (
-                  <div className="mb-12 p-8 bg-indigo-600/10 border border-indigo-500/20 rounded-[2.5rem] flex items-center justify-between shadow-xl">
-                    <div className="flex items-center gap-6">
-                      <RefreshCw className="w-8 h-8 animate-spin text-indigo-400" />
-                      <div>
-                        <span className="font-black uppercase text-white text-lg block leading-none">Engine is scanning: @{activeScraping}</span>
-                        <span className="text-[10px] text-indigo-300/60 font-bold uppercase tracking-[0.3em] mt-2 block italic">AI Agent sedang mengekstrak profil UMKM...</span>
-                      </div>
-                    </div>
-                    <div className="px-6 py-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-[10px] font-black uppercase text-indigo-400 animate-pulse">Worker Online</div>
-                  </div>
-                )}
 
                 <SellerTable sellers={filteredSellers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)} loading={loading} />
 
