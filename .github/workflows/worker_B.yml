@@ -1,7 +1,7 @@
-name: TikTok Scraper Worker B
+name: TikTok Scraper Worker A
 on:
   schedule:
-    - cron: '15 */4 * * *'
+    - cron: '0 */4 * * *'
   workflow_dispatch:
 jobs:
   scrape:
@@ -23,7 +23,7 @@ jobs:
       - name: Run Engine (Fast Mode)
         env:
           PYTHONUNBUFFERED: '1'
-          WORKER_INDEX: '1'
+          WORKER_INDEX: '0'
           WORKER_TOTAL: '2'
           SCRAPE_MODE: 'fast'
           MAX_PROFILES: '200'
