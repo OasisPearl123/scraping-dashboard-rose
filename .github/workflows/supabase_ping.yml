@@ -2,8 +2,8 @@ name: Supabase Keep Alive (Anti-Sleep)
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Berjalan setiap 6 jam
-  workflow_dispatch: # Memungkinkan dijalankan manual dari tab Actions
+    - cron: '0 * * * *' # Berjalan setiap 1 JAM agar database tidak pernah sleep
+  workflow_dispatch: # Memungkinkan dijalankan manual
 
 jobs:
   ping_job:
@@ -17,4 +17,4 @@ jobs:
           -H "Content-Type: application/json" \
           -H "Prefer: resolution=merge-duplicates" \
           -d '{"id": "github_keep_alive", "last_seen": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "status": "online"}'
-          echo "Ping sent successfully!"
+          echo "Ping sent successfully at $(date)!"
