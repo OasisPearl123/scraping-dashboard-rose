@@ -374,8 +374,6 @@ async def main_fast():
                     await engine.process_keyword_fast(context, keyword, category)
                     db.upsert('search_queries', {'query': keyword, 'status': 'completed'}, on_conflict='query')
                     engine.total_keywords_processed += 1
-                    if engine.total_keywords_processed % 3 == 0:
-                        db.upsert('system_status', {'id': f'worker_{worker_id}', 'last_seen': datetime.now().isoformat(), 'status': 'online', 'profiles_saved': engine.total_profiles_saved, 'session': session_count}, on_conflict='id')
 
             log(f"📊 SESSION {session_count} COMPLETE | Saved: {engine.total_profiles_saved}")
             log(f"⏳ PAUSING for 5 minutes...", "WARNING")
