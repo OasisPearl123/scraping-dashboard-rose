@@ -35,7 +35,16 @@ function SellerTable({ sellers, loading }) {
                   <td className="px-8 py-10 align-top text-sm font-black text-slate-700">{(index + 1).toString().padStart(2, '0')}</td>
                   <td className="px-8 py-10 align-top min-w-[300px]">
                     <div className="flex flex-col gap-3">
-                      <span className="text-xl font-black italic tracking-tighter text-white">@{seller.username}</span>
+                      <a
+                        href={seller.tiktok_url || `https://www.tiktok.com/@${seller.username}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xl font-black italic tracking-tighter text-white hover:text-indigo-400 transition-colors flex items-center gap-2 group/link"
+                      >
+                        @{seller.username}
+                        <ExternalLink className="w-4 h-4 opacity-0 group-hover/link:opacity-100 transition-opacity" />
+                      </a>
                       <div className="flex flex-wrap gap-2">
                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase rounded border border-emerald-500/20">✓ Verified</span>
                          {seller.potential_score > 85 && <span className="px-2 py-0.5 bg-rose-500 text-white text-[8px] font-black uppercase rounded">🔥 Trending</span>}
@@ -84,8 +93,13 @@ function SellerTable({ sellers, loading }) {
                     <td colSpan="7" className="px-8 py-10">
                       <div className="bg-[#12141d] border border-white/5 p-8 rounded-[2rem] flex flex-col gap-8 shadow-inner">
                         <div className="flex gap-4">
-                           <a href={seller.tiktok_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-6 py-3 bg-[#1b1f2b] border border-white/5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all">
-                              <Music2 className="w-4 h-4" /> TikTok Profile <ExternalLink className="w-3 h-3" />
+                           <a
+                             href={seller.tiktok_url || `https://www.tiktok.com/@${seller.username}`}
+                             target="_blank"
+                             rel="noreferrer"
+                             className="flex items-center gap-3 px-6 py-3 bg-indigo-600 border border-indigo-500 rounded-xl text-xs font-black uppercase text-white hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20"
+                           >
+                              <Music2 className="w-4 h-4" /> Kunjungi Profil TikTok <ExternalLink className="w-3 h-3" />
                            </a>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
