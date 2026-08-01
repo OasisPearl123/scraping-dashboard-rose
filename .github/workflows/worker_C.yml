@@ -1,7 +1,7 @@
-name: TikTok Scraper Worker A
+name: TikTok Scraper Worker C
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '20 */6 * * *'
   workflow_dispatch:
 jobs:
   scrape:
@@ -23,7 +23,7 @@ jobs:
       - name: Run Engine
         env:
           PYTHONUNBUFFERED: '1'
-          WORKER_INDEX: '0'
+          WORKER_INDEX: '2'
           WORKER_TOTAL: '4'
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
