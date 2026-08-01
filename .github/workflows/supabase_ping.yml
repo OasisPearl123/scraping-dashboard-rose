@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Send Keep-Alive Ping to Supabase
         run: |
-          curl -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/system_status" \
+          curl -X POST "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/system_status" \
           -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
           -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
           -H "Content-Type: application/json" \
