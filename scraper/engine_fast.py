@@ -72,9 +72,7 @@ class SupabaseREST:
                     locked_at_str = record.get('locked_at')
                     if locked_at_str:
                         locked_at = datetime.fromisoformat(locked_at_str.replace('Z', '+00:00'))
-                        # Remove timezone info for comparison if now() is naive, or use UTC
                         if (datetime.now(locked_at.tzinfo) - locked_at).total_seconds() < 600:
-                            log(f"🔒 {keyword} still locked by {record.get('locked_by')}", "WARNING")
                             return False
 
             headers = {**self.headers, "Prefer": "return=representation"}
@@ -92,34 +90,35 @@ class SupabaseREST:
             return False
 
     def ai_generate_keywords(self, city, category):
-        """Generate keywords with AI model optimized for Indonesia"""
+        """Generate keywords with Qwen model - terbaik untuk Indonesia"""
         if not self.groq_token:
             return []
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.groq_token}", "Content-Type": "application/json"}
 
-            prompt = f"""Buat 15 kata kunci TikTok untuk mencari penjual lokal di {city} untuk kategori {category}.
-Kata kunci harus populer di TikTok Indonesia (gaul) dan mengandung kata: murah, jual, beli, produk, toko, reseller, grosir, cod.
-Format: JSON array saja, tanpa penjelasan.
-Contoh: ["{category} {city}", "{category} murah {city}", "jual {category} {city}"]
-"""
-            # Using Llama 3.3 70B as requested for high intelligence
-            model_name = "llama-3.3-70b-versatile"
+            prompt = f"""Buat 20 kata kunci TikTok untuk mencari penjual lokal di {city} untuk kategori {category}.
+Kata kunci harus:
+1. Populer di TikTok Indonesia (gaul/slang)
+2. Mengandung kata: murah, jual, beli, produk, toko, reseller, grosir, cod, shopee, tokopedia
+3. Bervariasi: formal, gaul, dan kombinasi
+4. Format: JSON array saja, tanpa penjelasan
 
+Contoh format: ["fashion jakarta", "baju murah jakarta", "jual fashion jakarta", "reseller fashion jakarta"]
+"""
             data = {
-                "model": model_name,
+                "model": "qwen/qwen3.6-27b",
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.8,
-                "max_tokens": 500
+                "temperature": 0.9,
+                "max_tokens": 800
             }
 
-            resp = requests.post(url, headers=headers, json=data, timeout=30).json()
+            resp = requests.post(url, headers=headers, json=data, timeout=45).json()
             content = resp['choices'][0]['message']['content']
             match = re.search(r'\[.*\]', content, re.DOTALL)
             if match:
                 keywords = json.loads(match.group(0))
-                return [kw for kw in keywords if len(kw) > 5]
+                return [kw for kw in keywords if len(kw) > 4]
             return []
         except Exception as e:
             log(f"AI generate failed: {e}", "WARNING")
@@ -129,15 +128,18 @@ class FastTiktokEngine:
     def __init__(self, db, worker_id):
         self.db = db
         self.worker_id = worker_id
-        self.total_workers = int(os.environ.get('WORKER_TOTAL', '2'))
-        self.categories = ["Fashion", "Kuliner", "Beauty", "Skincare", "Gadget", "Elektronik", "Home Living"]
+        self.total_workers = int(os.environ.get('WORKER_TOTAL', '1'))
+        self.categories = ["Fashion", "Kuliner", "Beauty", "Skincare", "Gadget", "Elektronik", "Home Living", "Jasa"]
         self.cities = self.load_cities()
-        self.max_profiles = int(os.environ.get('MAX_PROFILES', '200'))
-        self.max_scrolls = int(os.environ.get('MAX_SCROLLS', '30'))
+        self.max_profiles = int(os.environ.get('MAX_PROFILES', '500'))
         self.processed_usernames = set()
 
+        self.session_start_time = None
+        self.total_profiles_saved = 0
+        self.total_keywords_processed = 0
+
     def load_cities(self):
-        """Load cities with dynamic sharding via hashing"""
+        """Load cities with dynamic sharding via hashing - TANPA HARDCODE"""
         cities = self.db.get("cities", "select=name,province_id")
         provinces = self.db.get("provinces", "select=id,name")
         if not cities or not provinces:
@@ -148,7 +150,10 @@ class FastTiktokEngine:
         for c in cities:
             c['province_name'] = p_map.get(c['province_id'], "Indonesia")
 
-        # Dynamic Sharding based on name hash
+        if self.total_workers == 1:
+            log(f"Worker {self.worker_id}: ALL {len(cities)} cities assigned from DB", "SUCCESS")
+            return cities
+
         my_cities = []
         for city in cities:
             if hash(city['name']) % self.total_workers == self.worker_id:
@@ -172,16 +177,16 @@ class FastTiktokEngine:
             return 0
 
     def is_indonesian_bio_fast(self, bio):
-        """Fast detection using dynamic city names and commerce terms"""
+        """Fast detection using database values - NO HARDCODED NAMES"""
         if not bio: return False
         bio_lower = bio.lower()
 
-        # Heuristic for foreign scripts
+        # Reject foreign scripts
         foreign_script = re.compile(r'[^\x00-\x7F\s\d.,!?;:()\'"%-]')
         if len(foreign_script.findall(bio)) > (len(bio) * 0.1):
             return False
 
-        # Whitelist indicators
+        # Whitelist indicators (General terms allowed)
         indo_indicators = ["indonesia", "wa", "order", "cod", "shopee", "tokopedia", "reseller",
                           "grosir", "murah", "jual", "beli", "produk", "lokal", "ready"]
 
@@ -191,10 +196,10 @@ class FastTiktokEngine:
                 score += 1
                 if score >= 2: return True
 
-        # Match against database cities
+        # Match against DYNAMIC DB CITIES
         for city in self.cities:
-            if city['name'].lower() in bio_lower:
-                return True
+            if city['name'].lower() in bio_lower: return True
+            if city['province_name'].lower() in bio_lower: return True
         return False
 
     async def extract_profile_fast(self, context, username, category):
@@ -239,180 +244,142 @@ class FastTiktokEngine:
 
             self.db.upsert('sellers', data)
             self.processed_usernames.add(username)
+            self.total_profiles_saved += 1
             log(f"✅ {username} | {followers:,} f", "SUCCESS")
         except Exception:
             pass
         finally:
             await page.close()
 
-    async def search_fast(self, context, keyword):
-        """Infinite scroll with content detection"""
+    async def search_infinite_scroll(self, context, keyword):
+        """🔥 INFINITE SCROLL - Scroll sampai benar-benar ujung"""
         page = await context.new_page()
         users = set()
         try:
             await page.goto(f"https://www.tiktok.com/search/user?q={keyword.lower().replace(' ', '+')}", timeout=30000)
-            await asyncio.sleep(random.uniform(1, 2))
+            await asyncio.sleep(random.uniform(2, 3))
 
             last_height = 0
             same_count = 0
             scroll_count = 0
+            max_no_change = 10
 
-            while same_count < 3 and scroll_count < self.max_scrolls:
+            while same_count < max_no_change:
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(random.uniform(0.5, 1.0))
-
+                await asyncio.sleep(random.uniform(1.5, 3.0))
                 new_height = await page.evaluate("document.body.scrollHeight")
+
                 if new_height == last_height:
                     same_count += 1
                 else:
                     same_count = 0
                     last_height = new_height
-                scroll_count += 1
 
+                scroll_count += 1
                 if scroll_count % 5 == 0:
                     anchors = await page.query_selector_all('a[href*="/@"]')
                     for a in anchors:
                         href = await a.get_attribute("href")
-                        if href:
-                            match = re.search(r'@([\w._]+)', href)
-                            if match:
-                                users.add(match.group(1).lower())
+                        match = re.search(r'@([\w._]+)', href or "")
+                        if match: users.add(match.group(1).lower())
 
             anchors = await page.query_selector_all('a[href*="/@"]')
-            for a in anchors[:self.max_profiles]:
+            for a in anchors:
                 href = await a.get_attribute("href")
-                if href:
-                    match = re.search(r'@([\w._]+)', href)
-                    if match:
-                        users.add(match.group(1).lower())
+                match = re.search(r'@([\w._]+)', href or "")
+                if match: users.add(match.group(1).lower())
 
             return list(users)
-        except:
-            return []
-        finally:
-            await page.close()
+        except Exception: return []
+        finally: await page.close()
 
     async def process_keyword_fast(self, context, keyword, category):
-        log(f"🔍 {keyword}")
-        users = await self.search_fast(context, keyword)
-        if not users:
-            return
+        log(f"🔍 Searching: {keyword}")
+        users = await self.search_infinite_scroll(context, keyword)
+        if not users: return
 
-        batch_size = 5
-        for i in range(0, min(len(users), self.max_profiles), batch_size):
+        batch_size = 10
+        total_processed = 0
+        for i in range(0, len(users), batch_size):
             batch = users[i:i+batch_size]
-            tasks = [self.extract_profile_fast(context, u, category) for u in batch]
-            await asyncio.gather(*tasks)
-            await asyncio.sleep(random.uniform(0.5, 1))
+            await asyncio.gather(*[self.extract_profile_fast(context, u, category) for u in batch])
+            total_processed += len(batch)
+            await asyncio.sleep(random.uniform(0.5, 1.5))
 
     async def generate_keywords(self):
-        """Generate keywords with 3-level fallback system"""
+        """Generate keywords with 3-level fallback - NO HARDCODE"""
         keywords = []
-
-        # Method 1: Pending from Database
         pending = self.db.get("search_queries", "status=eq.pending&limit=30")
         if pending:
             log(f"📥 Found {len(pending)} pending keywords", "INFO")
             return [p['query'] for p in pending]
 
-        # Method 2: AI Generation
         if self.db.groq_token:
-            log("🤖 Generating keywords with AI...", "INFO")
-            for city in self.cities[:10]:
+            log("🤖 Generating keywords with Qwen AI...", "INFO")
+            for city in self.cities[:15]:
                 for cat in self.categories[:5]:
                     try:
                         ai_keywords = self.db.ai_generate_keywords(city['name'], cat)
                         if ai_keywords:
-                            for kw in ai_keywords[:5]:
+                            for kw in ai_keywords[:8]:
                                 safe_kw = re.sub(r'[^\w\s\-]', '', kw)
-                                if safe_kw and len(safe_kw) > 3:
-                                    keywords.append(safe_kw)
-                        await asyncio.sleep(0.1)
+                                if safe_kw and len(safe_kw) > 3: keywords.append(safe_kw)
+                        await asyncio.sleep(0.2)
                     except: continue
 
-        # Method 3: Manual Fallback (Dynamic from DB)
         if not keywords:
-            log("⚠️ Using manual fallback keywords", "WARNING")
-            for city in self.cities[:15]:
+            log("⚠️ Using dynamic fallback keywords from DB", "WARNING")
+            for city in self.cities[:20]:
                 city_name = city['name']
                 for cat in self.categories:
-                    keywords.extend([
-                        f"{cat} {city_name}", f"{cat} murah {city_name}",
-                        f"jual {cat} {city_name}", f"beli {cat} {city_name}",
-                        f"toko {cat} {city_name}", f"reseller {cat} {city_name}",
-                        f"grosir {cat} {city_name}", f"cod {cat} {city_name}"
-                    ])
+                    keywords.extend([f"{cat} {city_name}", f"{cat} murah {city_name}", f"jual {cat} {city_name}"])
 
-        # Filter & deduplicate
         keywords = list(set(keywords))
         safe_keywords = [kw for kw in keywords if not re.search(r'[^\w\s\-]', kw) and len(kw) > 3]
-
-        # Filter by worker index
         my_keywords = [kw for kw in safe_keywords if hash(kw) % self.total_workers == self.worker_id]
-
-        result = my_keywords[:50]
-        log(f"📝 Final: {len(result)} keywords for worker {self.worker_id}", "SUCCESS")
-
-        if not result:
-            log("🚨 EMERGENCY FALLBACK", "ERROR")
-            result = ["Fashion Jakarta", "Kuliner Bandung", "Beauty Surabaya", "Skincare Jogja"]
-
-        return result
+        return my_keywords[:80]
 
 async def main_fast():
     db = SupabaseREST()
     worker_id = int(os.environ.get('WORKER_INDEX', 0))
     engine = FastTiktokEngine(db, worker_id)
-
-    if not engine.cities:
-        log("No cities loaded", "ERROR")
-        return
+    if not engine.cities: return
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={'width': 1280, 'height': 720}
-        )
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", viewport={'width': 1280, 'height': 720})
 
-        log(f"🚀 Worker {worker_id} START | {len(engine.cities)} cities", "SUCCESS")
-
-        # INFINITE LOOP
         session_count = 0
         while True:
             session_count += 1
-            log(f"📊 Session {session_count} started", "INFO")
+            engine.total_profiles_saved = 0
+            engine.total_keywords_processed = 0
+            engine.session_start_time = datetime.now()
+            engine.processed_usernames = set()
 
-            keywords = await engine.generate_keywords()
-            if not keywords:
-                log("⚠️ No keywords, waiting 5 minutes...", "WARNING")
-                await asyncio.sleep(300)
-                continue
+            log(f"📊 ===== SESSION {session_count} START =====", "SUCCESS")
+            session_end_time = engine.session_start_time + timedelta(hours=5)
 
-            log(f"📝 Processing {len(keywords)} keywords", "INFO")
-
-            processed = 0
-            for keyword in keywords:
-                if not db.lock_keyword(keyword, f"worker_{worker_id}"):
-                    log(f"⏭️ {keyword} locked", "WARNING")
+            while datetime.now() < session_end_time:
+                keywords = await engine.generate_keywords()
+                if not keywords:
+                    await asyncio.sleep(180)
                     continue
 
-                # Simple category extraction from keyword
-                category = keyword.split()[0]
-                if category not in engine.categories:
-                    category = random.choice(engine.categories)
+                for keyword in keywords:
+                    if datetime.now() >= session_end_time: break
+                    if not db.lock_keyword(keyword, f"worker_{worker_id}"): continue
+                    category = keyword.split()[0]
+                    if category not in engine.categories: category = random.choice(engine.categories)
+                    await engine.process_keyword_fast(context, keyword, category)
+                    db.upsert('search_queries', {'query': keyword, 'status': 'completed'}, on_conflict='query')
+                    engine.total_keywords_processed += 1
+                    if engine.total_keywords_processed % 3 == 0:
+                        db.upsert('system_status', {'id': f'worker_{worker_id}', 'last_seen': datetime.now().isoformat(), 'status': 'online', 'profiles_saved': engine.total_profiles_saved, 'session': session_count}, on_conflict='id')
 
-                await engine.process_keyword_fast(context, keyword, category)
-                db.upsert('search_queries', {'query': keyword, 'status': 'completed'}, on_conflict='query')
-                processed += 1
-
-                # Heartbeat every 5 keywords
-                if processed % 5 == 0:
-                    db.upsert('system_status', {'id': f'worker_{worker_id}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
-
-            log(f"✅ Session {session_count} done: {processed} keywords", "SUCCESS")
-            log(f"⏳ Waiting 15m for next session...", "INFO")
-            await asyncio.sleep(900)
+            log(f"📊 SESSION {session_count} COMPLETE | Saved: {engine.total_profiles_saved}")
+            log(f"⏳ PAUSING for 5 minutes...", "WARNING")
+            await asyncio.sleep(300)
 
 if __name__ == "__main__":
     asyncio.run(main_fast())
