@@ -39,28 +39,28 @@ function Dashboard({ user, onLogout }) {
 
   useEffect(() => {
     fetchSellers();
-    checkEngine();
     checkActiveTasks();
-    const interval = setInterval(() => { checkEngine(); checkActiveTasks(); }, 15000);
+    const interval = setInterval(() => { checkActiveTasks(); }, 15000);
+
+    // 🔥 REALTIME: Subscribe to sellers_v2 for instant updates
     const channel = supabase.channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sellers' }, () => fetchSellers())
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'sellers_v2' },
+        () => fetchSellers()
+      )
       .subscribe();
-    return () => { clearInterval(interval); supabase.removeChannel(channel); };
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const checkEngine = async () => {
-    try {
-      const { data } = await supabase.from('system_status').select('last_seen').eq('id', 'main_engine').single();
-      if (data) {
-        const diff = (new Date() - new Date(data.last_seen)) / 1000;
-        setEngineStatus(diff < 60 ? 'online' : 'offline');
-      }
-    } catch (e) { setEngineStatus('offline'); }
-  };
-
   const checkActiveTasks = async () => {
-    const { data } = await supabase.from('search_queries').select('query, status').in('status', ['pending', 'processing']).limit(1).maybeSingle();
-    if (data) { setActiveScraping(data.query); setIsProcessing(true); } else { setActiveScraping(null); setIsProcessing(false); }
+    try {
+      const { data } = await supabase.from('search_queries').select('query, status').in('status', ['pending', 'processing']).limit(1).maybeSingle();
+      if (data) { setActiveScraping(data.query); setIsProcessing(true); } else { setActiveScraping(null); setIsProcessing(false); }
+    } catch (e) { console.error(e); }
   };
 
   useEffect(() => {
@@ -196,8 +196,8 @@ function Dashboard({ user, onLogout }) {
             <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all"><RefreshCw className="w-3 h-3" /> Bagikan <ChevronDown className="w-3 h-3" /></button>
             <div className="w-10 h-10 bg-slate-900 border border-white/5 rounded-xl flex items-center justify-center text-slate-500 font-black text-xs">?</div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-white/5 rounded-xl">
-              <div className={`w-1.5 h-1.5 rounded-full ${engineStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></div>
-              <span className="text-[10px] font-black uppercase text-slate-400">@{user.username}</span>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+              <span className="text-[10px] font-black uppercase text-slate-400">Local Swarm Active</span>
             </div>
             <button onClick={handleLogout} className="p-2.5 text-slate-500 hover:text-rose-500 transition-colors"><LogOut className="w-5 h-5" /></button>
           </div>
