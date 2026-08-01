@@ -207,7 +207,7 @@ class FastTiktokEngine:
             return
 
         encoded_username = urllib.parse.quote(username)
-        existing = self.db.get("sellers", f"username=eq.{encoded_username}&select=username")
+        existing = self.db.get("sellers_v2", f"username=eq.{encoded_username}&select=username")
         if existing:
             self.processed_usernames.add(username)
             return
@@ -242,7 +242,7 @@ class FastTiktokEngine:
                 "last_scraped": datetime.now().isoformat()
             }
 
-            self.db.upsert('sellers', data)
+            self.db.upsert('sellers_v2', data)
             self.processed_usernames.add(username)
             self.total_profiles_saved += 1
             log(f"✅ {username} | {followers:,} f", "SUCCESS")
