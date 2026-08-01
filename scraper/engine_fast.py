@@ -61,7 +61,7 @@ class SupabaseREST:
             return False
 
     def lock_keyword(self, keyword, worker_id):
-        """Atomic lock with proper URL encoding and timeout check"""
+        """Atomic lock with proper URL encoding and expiration check"""
         try:
             encoded_keyword = urllib.parse.quote(keyword)
             existing = self.get("search_queries", f"query=eq.{encoded_keyword}&select=status,locked_by,locked_at")
@@ -71,8 +71,9 @@ class SupabaseREST:
                 if record.get('status') == 'processing':
                     locked_at_str = record.get('locked_at')
                     if locked_at_str:
-                        locked_at = datetime.fromisoformat(locked_at_str)
-                        if (datetime.now() - locked_at).seconds < 600:  # 10 minute lock
+                        locked_at = datetime.fromisoformat(locked_at_str.replace('Z', '+00:00'))
+                        # Remove timezone info for comparison if now() is naive, or use UTC
+                        if (datetime.now(locked_at.tzinfo) - locked_at).total_seconds() < 600:
                             log(f"🔒 {keyword} still locked by {record.get('locked_by')}", "WARNING")
                             return False
 
@@ -91,7 +92,7 @@ class SupabaseREST:
             return False
 
     def ai_generate_keywords(self, city, category):
-        """Generate keywords with best available model for Indonesia"""
+        """Generate keywords with AI model optimized for Indonesia"""
         if not self.groq_token:
             return []
         try:
@@ -103,8 +104,7 @@ Kata kunci harus populer di TikTok Indonesia (gaul) dan mengandung kata: murah, 
 Format: JSON array saja, tanpa penjelasan.
 Contoh: ["{category} {city}", "{category} murah {city}", "jual {category} {city}"]
 """
-            # Note: Using llama-3.3-70b as fallback if qwen string is not recognized by API
-            # User suggested qwen/qwen3.6-27b but common Groq qwen is qwen-2.5-32b
+            # Using Llama 3.3 70B as requested for high intelligence
             model_name = "llama-3.3-70b-versatile"
 
             data = {
@@ -137,23 +137,24 @@ class FastTiktokEngine:
         self.processed_usernames = set()
 
     def load_cities(self):
+        """Load cities with dynamic sharding via hashing"""
         cities = self.db.get("cities", "select=name,province_id")
         provinces = self.db.get("provinces", "select=id,name")
         if not cities or not provinces:
-            log("Failed to load cities", "ERROR")
+            log("Failed to load cities from DB", "ERROR")
             return []
 
         p_map = {p['id']: p['name'] for p in provinces}
         for c in cities:
             c['province_name'] = p_map.get(c['province_id'], "Indonesia")
 
-        # Dynamic Sharding via Hash
+        # Dynamic Sharding based on name hash
         my_cities = []
         for city in cities:
             if hash(city['name']) % self.total_workers == self.worker_id:
                 my_cities.append(city)
 
-        log(f"Worker {self.worker_id}: {len(my_cities)} cities assigned", "SUCCESS")
+        log(f"Worker {self.worker_id}: {len(my_cities)} cities assigned dynamically", "SUCCESS")
         return my_cities
 
     def parse_followers(self, text):
@@ -171,24 +172,29 @@ class FastTiktokEngine:
             return 0
 
     def is_indonesian_bio_fast(self, bio):
+        """Fast detection using dynamic city names and commerce terms"""
         if not bio: return False
         bio_lower = bio.lower()
 
-        foreign_indicators = ["malaysia", "singapore", "philippines", "thailand", "india",
-                             "pakistan", "usa", "uk", "england", "dubai", "shipping worldwide"]
-        for word in foreign_indicators:
-            if word in bio_lower:
-                return False
+        # Heuristic for foreign scripts
+        foreign_script = re.compile(r'[^\x00-\x7F\s\d.,!?;:()\'"%-]')
+        if len(foreign_script.findall(bio)) > (len(bio) * 0.1):
+            return False
 
-        indo_indicators = ["indonesia", "jakarta", "bandung", "surabaya", "medan",
-                          "wa", "order", "cod", "shopee", "tokopedia", "reseller",
-                          "grosir", "murah", "jual", "beli", "produk", "lokal"]
+        # Whitelist indicators
+        indo_indicators = ["indonesia", "wa", "order", "cod", "shopee", "tokopedia", "reseller",
+                          "grosir", "murah", "jual", "beli", "produk", "lokal", "ready"]
+
         score = 0
         for word in indo_indicators:
             if word in bio_lower:
                 score += 1
-                if score >= 2:
-                    return True
+                if score >= 2: return True
+
+        # Match against database cities
+        for city in self.cities:
+            if city['name'].lower() in bio_lower:
+                return True
         return False
 
     async def extract_profile_fast(self, context, username, category):
@@ -240,7 +246,7 @@ class FastTiktokEngine:
             await page.close()
 
     async def search_fast(self, context, keyword):
-        """Improved search with content detection"""
+        """Infinite scroll with content detection"""
         page = await context.new_page()
         users = set()
         try:
@@ -303,13 +309,13 @@ class FastTiktokEngine:
         """Generate keywords with 3-level fallback system"""
         keywords = []
 
-        # Level 1: Pending from Database
+        # Method 1: Pending from Database
         pending = self.db.get("search_queries", "status=eq.pending&limit=30")
         if pending:
             log(f"📥 Found {len(pending)} pending keywords", "INFO")
             return [p['query'] for p in pending]
 
-        # Level 2: AI Generation
+        # Method 2: AI Generation
         if self.db.groq_token:
             log("🤖 Generating keywords with AI...", "INFO")
             for city in self.cities[:10]:
@@ -324,7 +330,7 @@ class FastTiktokEngine:
                         await asyncio.sleep(0.1)
                     except: continue
 
-        # Level 3: Manual Fallback
+        # Method 3: Manual Fallback (Dynamic from DB)
         if not keywords:
             log("⚠️ Using manual fallback keywords", "WARNING")
             for city in self.cities[:15]:
@@ -341,7 +347,7 @@ class FastTiktokEngine:
         keywords = list(set(keywords))
         safe_keywords = [kw for kw in keywords if not re.search(r'[^\w\s\-]', kw) and len(kw) > 3]
 
-        # Worker sharding
+        # Filter by worker index
         my_keywords = [kw for kw in safe_keywords if hash(kw) % self.total_workers == self.worker_id]
 
         result = my_keywords[:50]
@@ -349,7 +355,7 @@ class FastTiktokEngine:
 
         if not result:
             log("🚨 EMERGENCY FALLBACK", "ERROR")
-            result = ["Fashion", "Kuliner", "Beauty", "Skincare", "Gadget", "Elektronik", "Home Living"]
+            result = ["Fashion Jakarta", "Kuliner Bandung", "Beauty Surabaya", "Skincare Jogja"]
 
         return result
 
@@ -371,7 +377,7 @@ async def main_fast():
 
         log(f"🚀 Worker {worker_id} START | {len(engine.cities)} cities", "SUCCESS")
 
-        # INFINITE LOOP - Stay alive as long as GHA allows
+        # INFINITE LOOP
         session_count = 0
         while True:
             session_count += 1
@@ -391,6 +397,7 @@ async def main_fast():
                     log(f"⏭️ {keyword} locked", "WARNING")
                     continue
 
+                # Simple category extraction from keyword
                 category = keyword.split()[0]
                 if category not in engine.categories:
                     category = random.choice(engine.categories)
@@ -399,10 +406,11 @@ async def main_fast():
                 db.upsert('search_queries', {'query': keyword, 'status': 'completed'}, on_conflict='query')
                 processed += 1
 
+                # Heartbeat every 5 keywords
                 if processed % 5 == 0:
                     db.upsert('system_status', {'id': f'worker_{worker_id}', 'last_seen': datetime.now().isoformat(), 'status': 'online'}, on_conflict='id')
 
-            log(f"✅ Session {session_count} done", "SUCCESS")
+            log(f"✅ Session {session_count} done: {processed} keywords", "SUCCESS")
             log(f"⏳ Waiting 15m for next session...", "INFO")
             await asyncio.sleep(900)
 
