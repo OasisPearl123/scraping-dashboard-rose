@@ -96,13 +96,29 @@ function Dashboard({ user, onLogout }) {
 
   const fetchSellers = async () => {
     try {
-      const { data, error } = await supabase.from('sellers').select('*').order('created_at', { ascending: false });
+      // 1. Fetch data with a higher limit (e.g., 10,000 latest) to keep browser performance stable
+      // But we will get the REAL TOTAL COUNT for the stats card
+      const { data, error, count } = await supabase
+        .from('sellers')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .limit(10000);
+
       if (error) throw error;
       if (data) {
         setSellers(data);
+
+        // Dynamic unique filters from the current fetched data
         const uniqueProvinces = [...new Set(data.map(s => s.province).filter(Boolean))];
         const uniqueCities = [...new Set(data.map(s => s.city).filter(Boolean))];
-        setStats({ total: data.length, provinces: uniqueProvinces.length, cities: uniqueCities.length });
+
+        // STATS: Use the 'count' from Supabase for the Total stat card (shows real 28k+)
+        setStats({
+          total: count || data.length,
+          provinces: uniqueProvinces.length,
+          cities: uniqueCities.length
+        });
+
         setAvailableProvinces(uniqueProvinces);
         setAvailableCities(uniqueCities);
       }
