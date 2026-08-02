@@ -1,0 +1,27 @@
+image: python:3.9
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+stages:
+  - scout
+
+tiktok_scout_job:
+  stage: scout
+  parallel:
+    matrix:
+      - WORKER_INDEX: [0, 1, 2, 3]
+  script:
+    - pip install playwright requests python-dotenv
+    - playwright install chromium
+    - export SCOUT_MODE="true"
+    - export WORKER_TOTAL=4
+    - python scraper/engine_fast.py
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  timeout: 1h
