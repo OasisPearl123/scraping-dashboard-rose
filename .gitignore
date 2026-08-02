@@ -38,6 +38,13 @@ htmlcov/
 .vscode/
 .idea/
 
+# Browser Sessions (PENTING: Jangan di-upload ke GitHub)
+worker_session_*/
+temp_session_*/
+worker_session_*
+temp_session_*
+master_auth_state.json
+
 # OS
 .DS_Store
-Thumbs.dbscraper/user_data/
+Thumbs.db
