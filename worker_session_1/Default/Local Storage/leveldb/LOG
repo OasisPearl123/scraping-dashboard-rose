@@ -1,3 +1,14 @@
-2026/08/02-11:00:36.700 5bbcca Reusing MANIFEST /Users/dtmp26742/Downloads/Tiktok-dashboard/worker_session_1/Default/Local Storage/leveldb/MANIFEST-000001
-2026/08/02-11:00:36.725 5bbcca Recovering log #10
-2026/08/02-11:00:36.727 5bbcca Reusing old log /Users/dtmp26742/Downloads/Tiktok-dashboard/worker_session_1/Default/Local Storage/leveldb/000010.log 
+2026/08/02-11:06:25.779 5cd4d6 Reusing MANIFEST /Users/dtmp26742/Downloads/Tiktok-dashboard/worker_session_1/Default/Local Storage/leveldb/MANIFEST-000001
+2026/08/02-11:06:25.795 5cd4d6 Recovering log #10
+2026/08/02-11:06:25.796 5cd4d6 Level-0 table #12: started
+2026/08/02-11:06:25.824 5cd4d6 Level-0 table #12: 26256 bytes OK
+2026/08/02-11:06:25.832 5cd4d6 Delete type=0 #10
+2026/08/02-11:06:25.842 5cd4c9 Compacting 4@0 + 0@1 files
+2026/08/02-11:06:26.012 5cd4c9 Generated table #14@0: 48 keys, 2517781 bytes
+2026/08/02-11:06:26.026 5cd4c9 Generated table #15@0: 14 keys, 1063 bytes
+2026/08/02-11:06:26.026 5cd4c9 Compacted 4@0 + 0@1 files => 2518844 bytes
+2026/08/02-11:06:26.029 5cd4c9 compacted to: files[ 0 2 0 0 0 0 0 ]
+2026/08/02-11:06:26.030 5cd4c9 Delete type=2 #3
+2026/08/02-11:06:26.030 5cd4c9 Delete type=2 #7
+2026/08/02-11:06:26.030 5cd4c9 Delete type=2 #12
+2026/08/02-11:06:26.030 5cd4c9 Delete type=2 #9

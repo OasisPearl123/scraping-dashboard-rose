@@ -20,19 +20,19 @@ def log(worker_id, msg, type="INFO"):
     timestamp = datetime.now().strftime("%H:%M:%S")
     color = "\033[94m" if type == "INFO" else "\033[92m" if type == "SUCCESS" else "\033[93m" if type == "WARNING" else "\033[91m"
     reset = "\033[0m"
-    print(f"[{timestamp}] {color}{type:7}{reset} | [W{worker_id}] {msg}", flush=True)
+    prefix = f"[SCOUT-{worker_id}]" if os.environ.get('SCOUT_MODE') else f"[REAPER-{worker_id}]"
+    print(f"[{timestamp}] {color}{type:7}{reset} | {prefix} {msg}", flush=True)
 
 class SupabaseREST:
-    def __init__(self, worker_id):
-        self.worker_id = worker_id
+    def __init__(self):
         self.url = os.environ.get('VITE_SUPABASE_URL', '').rstrip('/')
         self.key = os.environ.get('VITE_SUPABASE_ANON_KEY') or os.environ.get('SUPABASE_SERVICE_KEY')
         self.headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
 
-    def upsert(self, table, data):
+    def upsert(self, table, data, on_conflict="username"):
         try:
             headers = {**self.headers, "Prefer": "resolution=merge-duplicates,return=minimal"}
-            r = requests.post(f"{self.url}/rest/v1/{table}?on_conflict=username", headers=headers, json=data, timeout=10)
+            r = requests.post(f"{self.url}/rest/v1/{table}?on_conflict={on_conflict}", headers=headers, json=data, timeout=10)
             return r.status_code in [200, 201]
         except: return False
 
@@ -47,12 +47,10 @@ class FastTiktokEngine:
         self.db = db
         self.worker_id = worker_id
         self.total_workers = int(os.environ.get('WORKER_TOTAL', '4'))
+        self.is_scout = os.environ.get('SCOUT_MODE') == "true"
         self.categories = ["Kuliner", "Fashion", "Beauty", "Skincare", "Gadget", "Elektronik", "Home Living", "Jasa"]
         self.processed_usernames = set()
         self.token = os.environ.get('token_groq')
-        self.email = os.environ.get('EMAIL_TIKTOK', 'santaynie@gmail.com')
-        self.password = os.environ.get('GMAIL_PASSWORD', 'anakbaik123')
-        self.fixed_priorities = ["Jakarta Selatan", "Jakarta Timur", "Jakarta Barat", "Jakarta Utara", "Jakarta Pusat", "Bandung", "Yogyakarta", "Solo", "Semarang", "Surabaya"]
 
     async def call_ai(self, model, prompt):
         if not self.token: return None
@@ -64,143 +62,92 @@ class FastTiktokEngine:
             return json.loads(resp['choices'][0]['message']['content'])
         except: return None
 
-    async def inject_stealth(self, page):
-        """Advanced Stealth Bypass"""
-        await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => False});
-            window.chrome = { runtime: {} };
-            Object.defineProperty(navigator, 'languages', {get: () => ['id-ID', 'id', 'en-US', 'en']});
-        """)
-
-    async def handle_captcha_with_ai(self, page):
-        """Mendeteksi dan mencoba memberikan instruksi AI jika ada captcha"""
-        content = (await page.content()).lower()
-        if "verify" in content or "captcha" in content or "robot" in content:
-            log(self.worker_id, "🧩 Captcha detected! Asking Strategic AI for guidance...", "WARNING")
-            # Logika mitigasi: AI biasanya akan menyarankan istirahat atau rotasi identitas
-            return True
-        return False
-
-    async def intelligent_login(self, page):
+    async def scout_search(self, page, keyword, category):
+        """GITHUB SIDE: Mencari akun dan memasukkannya ke antrean"""
         try:
-            log(self.worker_id, "🔍 Checking login status...", "INFO")
-            await page.goto("https://www.tiktok.com", wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(5)
+            log(self.worker_id, f"🔎 SCOUTING: {keyword}")
+            await page.goto(f"https://www.tiktok.com/search/user?q={urllib.parse.quote(keyword)}", wait_until="networkidle", timeout=60000)
+            await asyncio.sleep(8)
 
-            if await page.query_selector('[data-e2e="profile-icon"]'):
-                log(self.worker_id, "✅ Already logged in.", "SUCCESS")
-                return True
-
-            log(self.worker_id, f"🔐 Logging in to Gmail: {self.email}...", "INFO")
-            await page.goto("https://accounts.google.com/signin", wait_until="networkidle")
-
-            # Email phase
-            await page.fill('input[type="email"]', self.email)
-            await page.keyboard.press("Enter")
-            await asyncio.sleep(5)
-
-            # Password phase
-            try:
-                await page.wait_for_selector('input[type="password"]', timeout=10000)
-                await page.fill('input[type="password"]', self.password)
-                await page.keyboard.press("Enter")
-                await asyncio.sleep(10)
-            except:
-                log(self.worker_id, "⚠️ Password input not found or blocked by Google.", "WARNING")
-
-            log(self.worker_id, "🚀 Connecting Gmail to TikTok...", "INFO")
-            await page.goto("https://www.tiktok.com/login", wait_until="networkidle")
-            google_btn = await page.query_selector('text="Continue with Google"')
-            if google_btn:
-                async with page.expect_popup(timeout=60000) as popup_info:
-                    await google_btn.click()
-                popup = await popup_info.value
-                await popup.wait_for_load_state("networkidle")
-                # Klik akun yang tersedia
-                await popup.click('div[role="link"]')
-                await asyncio.sleep(12)
-
-            return await page.query_selector('[data-e2e="profile-icon"]') is not None
+            anchors = await page.query_selector_all('a[href*="/@"]')
+            added = 0
+            for a in anchors[:15]:
+                h = await a.get_attribute("href")
+                if h and "@" in h:
+                    u = re.search(r'@([\w._]+)', h).group(1).lower()
+                    # Simpan ke search_queries sebagai antrean (status=pending)
+                    if self.db.upsert('search_queries', {"query": u, "status": "pending", "locked_by": category}, on_conflict="query"):
+                        added += 1
+            log(self.worker_id, f"✅ Scouted {added} users for {keyword}", "SUCCESS")
         except Exception as e:
-            log(self.worker_id, f"⚠️ Login Warning: {str(e)[:50]}", "WARNING")
-            return False
+            log(self.worker_id, f"⚠️ Scout failed: {e}", "WARNING")
 
-    async def deep_extract(self, page, username, category, geo):
-        if username in self.processed_usernames: return
-        self.processed_usernames.add(username)
+    async def reaper_extract(self, page, task):
+        """LOCAL SIDE: Mengambil antrean dan membedahnya"""
+        username = task['query']
+        category = task.get('locked_by', 'Umum')
         try:
-            log(self.worker_id, f"⚡ Deep Analysis: @{username}", "INFO")
+            log(self.worker_id, f"⚡ REAPING: @{username}")
             await page.goto(f"https://www.tiktok.com/@{username}", wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(random.uniform(4, 6))
+            await asyncio.sleep(random.uniform(5, 8))
 
-            if await self.handle_captcha_with_ai(page): return
-
+            # Cek Followers & Bio
             f_el = await page.query_selector('[data-e2e="followers-count"]')
             if not f_el: return
 
             bio = await page.inner_text('[data-e2e="user-bio"]') if await page.query_selector('[data-e2e="user-bio"]') else ""
 
-            # Validation using Qwen-27B
-            res = await self.call_ai("qwen/qwen3.6-27b", f"Is @{username} a real business in Indonesia? Bio: {bio}. JSON: {{\"v\":true/false,\"r\":\"reason\"}}")
+            # AI Verifikasi (Qwen-27B)
+            res = await self.call_ai("qwen/qwen3.6-27b", f"Is @{username} a shop in Indonesia? Bio: {bio}. JSON: {{\"v\":true/false,\"r\":\"reason\"}}")
 
             if res and res.get("v"):
-                data = {"username": username, "followers_count": 0, "category": category, "city": geo['city'], "province": geo['province'], "potential_score": 90, "potential_reason": res.get("r"), "last_scraped": datetime.now().isoformat(), "platform": "tiktok", "bio": bio}
+                data = {"username": username, "followers_count": 0, "category": category, "city": "Indonesia", "potential_score": 90, "potential_reason": res.get("r"), "last_scraped": datetime.now().isoformat(), "platform": "tiktok", "bio": bio}
                 if self.db.upsert('sellers_v2', data):
-                    log(self.worker_id, f"💎 VALID UMKM: @{username}", "SUCCESS")
-        except: pass
+                    log(self.worker_id, f"💎 HARVESTED: @{username}", "SUCCESS")
 
-    async def run_swarm(self):
-        # 1. Fetch targets
-        cities = self.db.get("cities", "select=name,province_id")
-        provinces = self.db.get("provinces", "select=id,name")
-        p_map = {p['id']: p['name'] for p in (provinces or [])}
+            # Tandai selesai
+            self.db.upsert('search_queries', {"query": username, "status": "completed"}, on_conflict="query")
+        except Exception as e:
+            log(self.worker_id, f"⚠️ Reaper error @{username}: {e}", "WARNING")
 
-        final_list = []
-        for name in self.fixed_priorities:
-            match = next((c for c in (cities or []) if c['name'].lower() == name.lower()), None)
-            final_list.append({"name": name, "city": name, "province": p_map.get(match['province_id'], "Indonesia") if match else "Indonesia"})
+    async def run_hybrid(self):
+        # 1. Fetch cities safely
+        cities = self.db.get("cities", "select=name")
+        targets = [c['name'] for c in (cities or []) if 'name' in c]
+        if not targets: targets = ["Jakarta", "Bandung", "Surabaya", "Yogyakarta"]
 
-        my_targets = [t for i, t in enumerate(final_list) if i % self.total_workers == self.worker_id]
-        random.shuffle(my_targets)
+        random.shuffle(targets)
+        my_targets = [t for i, t in enumerate(targets) if i % self.total_workers == self.worker_id]
 
         async with async_playwright() as p:
-            session_dir = Path(f"worker_session_{self.worker_id}")
-            context = await p.chromium.launch_persistent_context(
-                user_data_dir=str(session_dir),
-                headless=True,
-                args=['--disable-blink-features=AutomationControlled', '--no-sandbox'],
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-            )
-
-            page = context.pages[0] if context.pages else await context.new_page()
-            await self.inject_stealth(page)
-            await self.intelligent_login(page)
+            browser = await p.chromium.launch(headless=True, args=['--disable-blink-features=AutomationControlled', '--no-sandbox'])
+            context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            page = await context.new_page()
 
             while True:
-                for geo in my_targets:
-                    for cat in self.categories:
-                        kw = f"{cat} {geo['name']}"
-                        log(self.worker_id, f"🔎 Searching: {kw}")
-                        try:
-                            await page.goto(f"https://www.tiktok.com/search/user?q={urllib.parse.quote(kw)}", wait_until="networkidle", timeout=60000)
-                            await asyncio.sleep(8)
+                if self.is_scout:
+                    # GITHUB MODE: Fokus mencari
+                    for target in my_targets[:5]: # Batasi biar gak kelamaan di satu run
+                        for cat in self.categories:
+                            await self.scout_search(page, f"{cat} murah {target}", cat)
+                            await asyncio.sleep(random.uniform(30, 60))
+                    break # Selesai 1 run GitHub
+                else:
+                    # LOCAL MODE: Fokus memanen profil dari DB
+                    queue = self.db.get('search_queries', "status=eq.pending&limit=10")
+                    if not queue:
+                        log(self.worker_id, "🌾 No queue found. Resting 2m...")
+                        await asyncio.sleep(120)
+                        continue
 
-                            if await self.handle_captcha_with_ai(page):
-                                log(self.worker_id, "🚨 BLOCKED. Waiting for supervisor instructions.", "ERROR")
-                                await asyncio.sleep(300)
-                                continue
+                    for task in queue:
+                        # Lock task
+                        if self.db.upsert('search_queries', {"query": task['query'], "status": "processing"}, on_conflict="query"):
+                            await self.reaper_extract(page, task)
+                            await asyncio.sleep(random.uniform(10, 20))
 
-                            anchors = await page.query_selector_all('a[href*="/@"]')
-                            for a in anchors[:7]:
-                                h = await a.get_attribute("href")
-                                if h and "@" in h:
-                                    u = re.search(r'@([\w._]+)', h).group(1).lower()
-                                    await self.deep_extract(page, u, cat, geo)
-                                    await asyncio.sleep(random.uniform(4, 8))
-                        except: pass
-                        await asyncio.sleep(random.uniform(30, 60))
-                await asyncio.sleep(600)
+                    await asyncio.sleep(30)
 
 if __name__ == "__main__":
     idx = int(os.environ.get('WORKER_INDEX', 0))
-    asyncio.run(FastTiktokEngine(SupabaseREST(idx), idx).run_swarm())
+    asyncio.run(FastTiktokEngine(SupabaseREST(), idx).run_hybrid())
